@@ -1,24 +1,29 @@
 from dash import Dash, dcc, html, Input, Output
 import dash_cytoscape as cyto
 
+from biolink_downloader import BiolinkDownloader
+
 # Load additional layouts (including Dagre)
 cyto.load_extra_layouts()
 
 # Graph elements with domain and range properties
-elements = [
-    {"data": {"id": "Gene", "label": "Gene", "attributes": {"definition": "A gene is a unit of heredity.",
-                                                            "notes": "Essential for encoding proteins."}}},
-    {"data": {"id": "Disease", "label": "Disease",
-              "attributes": {"definition": "A disorder of structure or function in an organism."}}},
-    {"data": {"id": "Variant", "label": "Variant", "attributes": {"definition": "A variation in DNA sequence."}}},
-    {"data": {"source": "Gene", "target": "Disease", "domain": "Gene", "range": "Disease"}},
-    {"data": {"source": "Gene", "target": "Variant", "domain": "Gene", "range": "Variant"}},
-    {"data": {"source": "Variant", "target": "Disease", "domain": "Variant", "range": "Disease"}}
-]
+# elements = [
+#     {"data": {"id": "Gene", "label": "Gene", "attributes": {"definition": "A gene is a unit of heredity.",
+#                                                             "notes": "Essential for encoding proteins."}}},
+#     {"data": {"id": "Disease", "label": "Disease",
+#               "attributes": {"definition": "A disorder of structure or function in an organism."}}},
+#     {"data": {"id": "Variant", "label": "Variant", "attributes": {"definition": "A variation in DNA sequence."}}},
+#     {"data": {"source": "Gene", "target": "Disease", "domain": "Gene", "range": "Disease"}},
+#     {"data": {"source": "Gene", "target": "Variant", "domain": "Gene", "range": "Variant"}},
+#     {"data": {"source": "Variant", "target": "Disease", "domain": "Variant", "range": "Disease"}}
+# ]
+
+bd = BiolinkDownloader()
+elements = bd.category_dag_dash
 
 # Extract unique domain and range values for dropdowns
-domains = sorted(set(edge["data"]["domain"] for edge in elements if "source" in edge["data"]))
-ranges = sorted(set(edge["data"]["range"] for edge in elements if "target" in edge["data"]))
+domains = sorted(set(edge["data"]["domain"] for edge in elements if "source" in edge["data"] and "domain" in edge["data"]))
+ranges = sorted(set(edge["data"]["range"] for edge in elements if "target" in edge["data"] and "range" in edge["data"]))
 
 # Initialize Dash app
 app = Dash(__name__)
@@ -50,7 +55,8 @@ app.layout = html.Div([
         elements=elements,
         layout={"name": "dagre",
                 "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                "spacingFactor": 0.5  # Adjust spacing between nodes
+                "spacingFactor": 0.3,  # Adjust spacing between nodes
+                "nodeSep": 50
                 },
         style={"width": "100%", "height": "800px"},
         stylesheet=[
@@ -73,9 +79,9 @@ app.layout = html.Div([
                 "target-arrow-shape": "triangle",
                 "target-arrow-color": "black",
                 "arrow-scale": 0.3,
-                "curve-style": "bezier",
-                # "control-point-distances": "40px",
-                # "control-point-weights": "0.5"
+                'curve-style': 'unbundled-bezier',
+                'control-point-distances': [20, 40],
+                'control-point-weights': [0.25, 0.75]
             }},
             # Optional: Style for selected nodes/edges
             {"selector": ":selected", "style": {
