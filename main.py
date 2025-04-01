@@ -55,8 +55,10 @@ app.layout = html.Div([
         elements=elements,
         layout={"name": "dagre",
                 "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                "spacingFactor": 0.3,  # Adjust spacing between nodes
-                "nodeSep": 50
+                "spacingFactor": 0.2,  # Adjust spacing between nodes
+                "nodeDimensionsIncludeLabels": True,
+                # "nodeSep": 50,  # Adjust horizontal spacing
+                "rankSep": 700,  # Adjust vertical spacing (between ranks)
                 },
         style={"width": "100%", "height": "800px"},
         stylesheet=[
@@ -69,19 +71,19 @@ app.layout = html.Div([
                 "color": "black",
                 "text-valign": "center",
                 "text-halign": "left",
-                "font-size": "8px",
+                "font-size": "10px",
                 "text-margin-x": "-1px"
             }},
             # Style for edges: curved edges
             {"selector": "edge", "style": {
                 "width": 0.5,
-                "line-color": "black",
+                "line-color": "grey",
                 "target-arrow-shape": "triangle",
                 "target-arrow-color": "black",
                 "arrow-scale": 0.3,
-                'curve-style': 'unbundled-bezier',
-                'control-point-distances': [20, 40],
-                'control-point-weights': [0.25, 0.75]
+                'curve-style': 'bezier',
+                # 'control-point-distances': [20, 40],
+                # 'control-point-weights': [0.25, 0.75]
             }},
             # Optional: Style for selected nodes/edges
             {"selector": ":selected", "style": {
