@@ -139,9 +139,6 @@ def filter_graph(selected_domains, selected_ranges):
 )
 def display_node_info(selected_nodes):
     """Update the info display area CONTENT based on node selection."""
-    # Add a print statement for debugging:
-    print(f"selectedNodeData received: {selected_nodes}")
-
     if selected_nodes: # Check if the list is not empty
         # A node (or nodes) is selected, display info for the first one
         node_data = selected_nodes[0] # Get the data of the first selected node
