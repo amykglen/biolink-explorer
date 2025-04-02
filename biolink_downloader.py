@@ -44,7 +44,7 @@ class BiolinkDownloader:
             raise RuntimeError(f"ERROR: Request to get Biolink {self.biolink_version} YAML file returned "
                                f"{response.status_code} response. Cannot load BiolinkHelper.")
 
-    def build_category_dag(self) -> dict:
+    def build_category_dag(self) -> nx.DiGraph:
         category_dag = nx.DiGraph()
 
         for class_name_english, info in self.biolink_model_raw["classes"].items():
@@ -72,14 +72,12 @@ class BiolinkDownloader:
         for non_category_node_id in non_category_node_ids:
             category_dag.remove_node(non_category_node_id)
 
-        graph_dict = json_graph.node_link_data(category_dag, edges="edges")
-
         with open(f"{SCRIPT_DIR}/category_dag.json", "w+") as category_file:
-            json.dump(graph_dict, category_file, indent=2)
+            json.dump(json_graph.node_link_data(category_dag, edges="edges"), category_file, indent=2)
 
-        return graph_dict
+        return category_dag
 
-    def build_predicate_dag(self) -> dict:
+    def build_predicate_dag(self) -> nx.DiGraph:
         predicate_dag = nx.DiGraph()
 
         # NOTE: 'slots' includes some things that aren't predicates, but we don't care; doesn't hurt to include them
@@ -119,22 +117,21 @@ class BiolinkDownloader:
         for non_predicate_node_id in non_predicate_node_ids:
             predicate_dag.remove_node(non_predicate_node_id)
 
-        graph_dict = json_graph.node_link_data(predicate_dag, edges="edges")
-
         with open(f"{SCRIPT_DIR}/predicate_dag.json", "w+") as predicate_file:
-            json.dump(graph_dict, predicate_file, indent=2)
+            json.dump(json_graph.node_link_data(predicate_dag, edges="edges"), predicate_file, indent=2)
 
-        return graph_dict
+        return predicate_dag
 
-    def convert_to_dash_format(self, nx_dag_dict: dict) -> List[dict]:
+    def convert_to_dash_format(self, nx_dag: nx.DiGraph) -> List[dict]:
+        dict_dag = json_graph.node_link_data(nx_dag, edges="edges")
         dash_nodes = [{"data": {"id": node["id"],
                                 "label": node["id"],
                                 "attributes": self.extract_attributes(node)}}
-                      for node in nx_dag_dict["nodes"]]
+                      for node in dict_dag["nodes"]]
         dash_edges = [{"data": {"source": edge["source"],
                                 "target": edge["target"],
                                 "attributes": self.extract_attributes(edge)}}
-                      for edge in nx_dag_dict["edges"]]
+                      for edge in dict_dag["edges"]]
         return dash_nodes + dash_edges
 
     def extract_attributes(self, nx_item: dict) -> dict:
@@ -157,13 +154,13 @@ class BiolinkDownloader:
     def get_ancestors_nx(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
         node_ids = self.convert_to_set(node_ids)
         all_ancestors = [set(nx.ancestors(nx_graph, node_id)) for node_id in node_ids]
-        unique_ancestors = set.union(*all_ancestors).union(node_ids)
+        unique_ancestors = node_ids.union(*all_ancestors)
         return unique_ancestors
 
     def get_descendants_nx(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
         node_ids = self.convert_to_set(node_ids)
         all_descendants = [set(nx.descendants(nx_graph, node_id)) for node_id in node_ids]
-        unique_descendants = set.union(*all_descendants).union(node_ids)
+        unique_descendants = node_ids.union(*all_descendants)
         return unique_descendants
 
     @staticmethod

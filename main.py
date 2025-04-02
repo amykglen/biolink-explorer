@@ -22,10 +22,8 @@ bd = BiolinkDownloader()
 elements = bd.predicate_dag_dash
 
 # Extract unique domain and range values for dropdowns
-domains = sorted(set(node["data"]["attributes"]["domain"]
-                     for node in elements if "domain" in node["data"].get("attributes", dict())))
-ranges = sorted(set(node["data"]["attributes"]["range"]
-                    for node in elements if "range" in node["data"].get("attributes", dict())))
+domains = sorted(set(bd.category_dag.nodes()))
+ranges = sorted(set(bd.category_dag.nodes()))
 
 
 # Initialize Dash app
@@ -120,8 +118,8 @@ def filter_graph(selected_domains, selected_ranges):
     if not selected_domains and not selected_ranges:
         return elements  # Show all elements if no filters applied
 
-    selected_domains_set = bd.convert_to_set(selected_domains)
-    selected_ranges_set = bd.convert_to_set(selected_ranges)
+    selected_domains_set = bd.get_ancestors_nx(bd.category_dag, selected_domains)
+    selected_ranges_set = bd.get_ancestors_nx(bd.category_dag, selected_ranges)
 
     filtered_nodes = [node for node in elements if "id" in node["data"] and
                       (not selected_domains or (node["data"]["attributes"].get("domain", "") in selected_domains_set)) and
