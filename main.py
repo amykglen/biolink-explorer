@@ -39,7 +39,7 @@ app.layout = html.Div([
                 multi=True,
                 placeholder="Select one or more domains..."
             )
-        ], style={"width": "48%", "display": "inline-block", "padding": "0 1%"}),
+        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
         html.Div([
             html.Label("Filter by Range:"),
             dcc.Dropdown(
@@ -48,7 +48,15 @@ app.layout = html.Div([
                 multi=True,
                 placeholder="Select one or more ranges..."
             )
-        ], style={"width": "48%", "display": "inline-block", "padding": "0 1%"})
+        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
+        html.Div([
+            html.Label("Include Mixins?"),
+            dcc.Checklist(
+                id="include-mixins",
+                options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
+                value=["include"],  # Default: Show all nodes/edges
+            )
+        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
     ], style={"margin-bottom": "20px", "display": "flex", "flex-direction": "row", "width": "100%"}),
 
     cyto.Cytoscape(
@@ -73,7 +81,8 @@ app.layout = html.Div([
                 "text-valign": "center",
                 "text-halign": "left",
                 "font-size": "10px",
-                "text-margin-x": "-1px"
+                "text-margin-x": "-1px",
+                "cursor": "pointer"
             }},
             # Style for edges: curved edges
             {"selector": "edge", "style": {
@@ -111,22 +120,33 @@ app.layout = html.Div([
 @app.callback(
     Output("cytoscape-dag", "elements"),
     Input("domain-filter", "value"),
-    Input("range-filter", "value")
+    Input("range-filter", "value"),
+    Input("include-mixins", "value")
 )
-def filter_graph(selected_domains, selected_ranges):
-    """Filter edges based on domain and range selections."""
+def filter_graph(selected_domains, selected_ranges, include_mixins):
+    """Filter edges based on filter selections."""
+    if "include" in include_mixins:
+        relevant_elements = elements
+    else:
+        relevant_nodes = [element for element in elements if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]]
+        relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
+        relevant_edges = [element for element in elements if "source" in element["data"] and
+                          element["data"]["source"] in relevant_node_ids and
+                          element["data"]["target"] in relevant_node_ids]
+        relevant_elements = relevant_nodes + relevant_edges
+
     if not selected_domains and not selected_ranges:
-        return elements  # Show all elements if no filters applied
+        return relevant_elements  # Show all elements if no filters applied
 
     selected_domains_set = bd.get_ancestors_nx(bd.category_dag, selected_domains)
     selected_ranges_set = bd.get_ancestors_nx(bd.category_dag, selected_ranges)
 
-    filtered_nodes = [node for node in elements if "id" in node["data"] and
+    filtered_nodes = [node for node in relevant_elements if "id" in node["data"] and
                       (not selected_domains or (node["data"]["attributes"].get("domain", "") in selected_domains_set)) and
                       (not selected_ranges or (node["data"]["attributes"].get("range", "") in selected_ranges_set))]
     filtered_node_ids = {node["data"]["id"] for node in filtered_nodes}
 
-    filtered_edges = [edge for edge in elements if "source" in edge["data"] and
+    filtered_edges = [edge for edge in relevant_elements if "source" in edge["data"] and
                       edge["data"]["source"] in filtered_node_ids and edge["data"]["target"] in filtered_node_ids]
 
     return filtered_nodes + filtered_edges
