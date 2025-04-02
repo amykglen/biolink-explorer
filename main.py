@@ -1,3 +1,5 @@
+from typing import Set
+
 from dash import Dash, dcc, html, Input, Output
 import dash_cytoscape as cyto
 
@@ -40,12 +42,20 @@ def get_node_info(selected_nodes) -> any:
         # No node selected (list is empty), display the default text
         return "Click on a node to see info"
 
-def filter_graph(element_set, selected_domains, selected_ranges, include_mixins):
+def filter_graph(element_set, selected_domains, selected_ranges, include_mixins, search_nodes_expanded):
     """Filter edges based on filter selections."""
     if "include" in include_mixins:
         relevant_elements = element_set
     else:
         relevant_nodes = [element for element in element_set if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]]
+        relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
+        relevant_edges = [element for element in element_set if "source" in element["data"] and
+                          element["data"]["source"] in relevant_node_ids and
+                          element["data"]["target"] in relevant_node_ids]
+        relevant_elements = relevant_nodes + relevant_edges
+
+    if search_nodes_expanded:
+        relevant_nodes = [element for element in relevant_elements if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
         relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
         relevant_edges = [element for element in element_set if "source" in element["data"] and
                           element["data"]["source"] in relevant_node_ids and
@@ -68,16 +78,26 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins)
 
     return filtered_nodes + filtered_edges
 
-
 def get_mixin_filter(filter_id: str) -> any:
     return html.Div([
-                html.Label("Include mixins?"),
-                dcc.Checklist(
-                    id=filter_id,
-                    options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
-                    value=["include"],  # Default: Show all nodes/edges
-                )
-            ], style={"width": "160px", "display": "inline-block", "padding": "0 1%"})
+            html.Label("Include mixins?"),
+            dcc.Checklist(
+                id=filter_id,
+                options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
+                value=["include"],  # Default: Show all nodes/edges
+            )
+        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
+
+def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
+    return html.Div([
+        html.Label("Filter by Node(s):"),
+        dcc.Dropdown(
+            id=filter_id,
+            options=[{"label": node_name, "value": node_name} for node_name in node_names],
+            multi=True,
+            placeholder="Select node(s)..."
+        )
+    ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
 
 
 # ----------------------------------------------- Style variables -------------------------------------------------- #
@@ -158,34 +178,38 @@ elements_categories = bd.category_dag_dash
 # Extract unique domain and range values for dropdowns
 domains = sorted(set(bd.category_dag.nodes()))
 ranges = sorted(set(bd.category_dag.nodes()))
+all_categories = sorted(set(bd.category_dag.nodes()))
+all_predicates = sorted(set(bd.predicate_dag.nodes()))
 
 
 # Initialize Dash app
 app = Dash(__name__)
 
 filters_div_preds = html.Div([
-        get_mixin_filter("include-mixins-preds"),
-        html.Div([
-            html.Label("Filter by Domain:"),
-            dcc.Dropdown(
-                id="domain-filter",
-                options=[{"label": d, "value": d} for d in domains],
-                multi=True,
-                placeholder="Select one or more domains..."
-            )
-        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
-        html.Div([
-            html.Label("Filter by Range:"),
-            dcc.Dropdown(
-                id="range-filter",
-                options=[{"label": r, "value": r} for r in ranges],
-                multi=True,
-                placeholder="Select one or more ranges..."
-            )
-        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
-    ], style=filters_wrapper_style)
+    get_search_filter("node-search-preds", all_predicates),
+    get_mixin_filter("include-mixins-preds"),
+    html.Div([
+        html.Label("Filter by Domain:"),
+        dcc.Dropdown(
+            id="domain-filter",
+            options=[{"label": d, "value": d} for d in domains],
+            multi=True,
+            placeholder="Select one or more domains..."
+        )
+    ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
+    html.Div([
+        html.Label("Filter by Range:"),
+        dcc.Dropdown(
+            id="range-filter",
+            options=[{"label": r, "value": r} for r in ranges],
+            multi=True,
+            placeholder="Select one or more ranges..."
+        )
+    ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
+], style=filters_wrapper_style)
 
 filters_div_cats = html.Div([
+    get_search_filter("node-search-cats", all_categories),
     get_mixin_filter("include-mixins-cats")
 ], style=filters_wrapper_style)
 
@@ -237,17 +261,31 @@ app.layout = html.Div([
     Output("cytoscape-dag-preds", "elements"),
     Input("domain-filter", "value"),
     Input("range-filter", "value"),
-    Input("include-mixins-preds", "value")
+    Input("include-mixins-preds", "value"),
+    Input("node-search-preds", "value")
 )
-def filter_graph_predicates(selected_domains, selected_ranges, include_mixins):
-    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins)
+def filter_graph_predicates(selected_domains, selected_ranges, include_mixins, search_nodes):
+    if search_nodes:
+        ancestors = bd.get_ancestors_nx(bd.predicate_dag, search_nodes)
+        descendants = bd.get_descendants_nx(bd.predicate_dag, search_nodes)
+        search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
+    else:
+        search_nodes_expanded = set()
+    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes_expanded)
 
 @app.callback(
     Output("cytoscape-dag-cats", "elements"),
-    Input("include-mixins-cats", "value")
+    Input("include-mixins-cats", "value"),
+    Input("node-search-cats", "value")
 )
-def filter_graph_categories(include_mixins):
-    return filter_graph(elements_categories, [], [], include_mixins)
+def filter_graph_categories(include_mixins, search_nodes):
+    if search_nodes:
+        ancestors = bd.get_ancestors_nx(bd.category_dag, search_nodes)
+        descendants = bd.get_descendants_nx(bd.category_dag, search_nodes)
+        search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
+    else:
+        search_nodes_expanded = set()
+    return filter_graph(elements_categories, [], [], include_mixins, search_nodes_expanded)
 
 
 # Callbacks to display node info in the bottom area when a node is clicked
