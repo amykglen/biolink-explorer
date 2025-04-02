@@ -141,7 +141,6 @@ class BiolinkDownloader:
 
     def get_node_classes(self, dag_node) -> str:
         classes = set()
-        print(dag_node)
         if dag_node.get("is_mixin"):
             classes.add("mixin")
         if (("domain" not in dag_node or dag_node["domain"] == self.root_category) and
