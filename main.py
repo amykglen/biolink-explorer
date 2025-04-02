@@ -7,7 +7,7 @@ from biolink_downloader import BiolinkDownloader
 cyto.load_extra_layouts()
 
 
-# ---------------------------------------------- Helper functions/vars --------------------------------------------- #
+# ---------------------------------------------- Helper functions ------------------------------------------------- #
 
 def get_node_info(selected_nodes) -> any:
     """Update the info display area CONTENT based on node selection."""
@@ -77,7 +77,10 @@ def get_mixin_filter(filter_id: str) -> any:
                     options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
                     value=["include"],  # Default: Show all nodes/edges
                 )
-            ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
+            ], style={"width": "160px", "display": "inline-block", "padding": "0 1%"})
+
+
+# ----------------------------------------------- Style variables -------------------------------------------------- #
 
 
 node_info_div_style = {
@@ -91,7 +94,6 @@ node_info_div_style = {
     "font-size": "16px",
     "color": "black"
 }
-
 
 main_styling = [
     # Style for nodes: small black circles with labels to the right, with colored label backgrounds
@@ -143,7 +145,7 @@ main_styling = [
     }}
 ]
 
-filters_div_style = {"margin-bottom": "20px", "display": "flex", "flex-direction": "row", "width": "100%"}
+filters_wrapper_style = {"margin": "10px", "display": "flex", "flex-direction": "row", "width": "100%"}
 
 
 # --------------------------------------------------- App ---------------------------------------------------------- #
@@ -162,6 +164,7 @@ ranges = sorted(set(bd.category_dag.nodes()))
 app = Dash(__name__)
 
 filters_div_preds = html.Div([
+        get_mixin_filter("include-mixins-preds"),
         html.Div([
             html.Label("Filter by Domain:"),
             dcc.Dropdown(
@@ -179,13 +182,12 @@ filters_div_preds = html.Div([
                 multi=True,
                 placeholder="Select one or more ranges..."
             )
-        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
-        get_mixin_filter("include-mixins-preds")
-    ], style=filters_div_style)
+        ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
+    ], style=filters_wrapper_style)
 
 filters_div_cats = html.Div([
     get_mixin_filter("include-mixins-cats")
-], style=filters_div_style)
+], style=filters_wrapper_style)
 
 
 # Define our tabs
