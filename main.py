@@ -64,40 +64,63 @@ app.layout = html.Div([
         elements=elements,
         layout={"name": "dagre",
                 "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                "spacingFactor": 0.2,  # Adjust spacing between nodes
+                "spacingFactor": 0.28,  # Adjust spacing between nodes
                 "nodeDimensionsIncludeLabels": True,
                 # "nodeSep": 50,  # Adjust horizontal spacing
                 "rankSep": 700,  # Adjust vertical spacing (between ranks)
                 },
         style={"width": "100%", "height": "800px"},
         stylesheet=[
-            # Style for nodes: small black circles with labels to the right
+            # Style for nodes: small black circles with labels to the right, with colored label backgrounds
             {"selector": "node", "style": {
-                "background-color": "black",
-                "width": "6px",
-                "height": "6px",
+                "background-color": "#e3eac8",
+                "width": "label",
+                "height": "label",
                 "label": "data(label)",
                 "color": "black",
+                "shape": "round-rectangle",
                 "text-valign": "center",
-                "text-halign": "left",
+                "text-halign": "center",
                 "font-size": "10px",
-                "text-margin-x": "-1px",
-                "cursor": "pointer"
+                "cursor": "pointer",
+                "padding": "3px",
+                "background-opacity": 0.7,
+                "border-width": "1px",
+                "border-color": "#c7d591",
+                # "text-background-shape": "round-rectangle",
+                # "text-background-color": "#eae0c8",  # Add a background color to the label
+                # "text-background-opacity": 0.7,  # Adjust opacity as needed
+                # "text-background-padding": "3px",  # Add padding around the label background
             }},
+            # Special style for nodes with is_mixin = True
+            {"selector": ".mixin",
+             "style": {
+                 "border-width": "0px",
+                 "color": "grey",
+                 "background-opacity": 0.4  # Increase opacity for mixin nodes
+            }},
+            {"selector": ".unspecific",
+             "style": {
+                 "background-color": "#dcdcdc",
+                 "border-color": "#c2c2c2"
+             }},
             # Style for edges: curved edges
             {"selector": "edge", "style": {
                 "width": 0.5,
-                "line-color": "grey",
+                "line-color": "#b4b4b4",
                 "target-arrow-shape": "triangle",
-                "target-arrow-color": "black",
-                "arrow-scale": 0.3,
+                "target-arrow-color": "#b4b4b4",
+                "arrow-scale": 0.6,
                 'curve-style': 'bezier',
                 # 'control-point-distances': [20, 40],
                 # 'control-point-weights': [0.25, 0.75]
             }},
             # Optional: Style for selected nodes/edges
             {"selector": ":selected", "style": {
-                "background-color": "#ff5500"
+                "background-color": "#ff5500",
+                # "border-width": "3px",
+                "border-color": "#e64c00",
+                # "border-cap": "round"
             }},
         ]
     ),

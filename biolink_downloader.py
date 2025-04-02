@@ -126,7 +126,8 @@ class BiolinkDownloader:
         dict_dag = json_graph.node_link_data(nx_dag, edges="edges")
         dash_nodes = [{"data": {"id": node["id"],
                                 "label": node["id"],
-                                "attributes": self.extract_attributes(node)}}
+                                "attributes": self.extract_attributes(node)},
+                       "classes": self.get_node_classes(node)}
                       for node in dict_dag["nodes"]]
         dash_edges = [{"data": {"source": edge["source"],
                                 "target": edge["target"],
@@ -137,6 +138,16 @@ class BiolinkDownloader:
     def extract_attributes(self, nx_item: dict) -> dict:
         return {prop_name: value for prop_name, value in nx_item.items()
                 if prop_name not in self.core_nx_properties}
+
+    def get_node_classes(self, dag_node) -> str:
+        classes = set()
+        print(dag_node)
+        if dag_node.get("is_mixin"):
+            classes.add("mixin")
+        if (("domain" not in dag_node or dag_node["domain"] == self.root_category) and
+                ("range" not in dag_node or dag_node["range"] == self.root_category)):
+            classes.add("unspecific")
+        return " ".join(classes)
 
     @staticmethod
     def convert_to_biolink_camelcase(english_term: str):
