@@ -19,11 +19,14 @@ cyto.load_extra_layouts()
 # ]
 
 bd = BiolinkDownloader()
-elements = bd.category_dag_dash
+elements = bd.predicate_dag_dash
 
 # Extract unique domain and range values for dropdowns
-domains = sorted(set(edge["data"]["domain"] for edge in elements if "source" in edge["data"] and "domain" in edge["data"]))
-ranges = sorted(set(edge["data"]["range"] for edge in elements if "target" in edge["data"] and "range" in edge["data"]))
+domains = sorted(set(node["data"]["attributes"]["domain"]
+                     for node in elements if "domain" in node["data"].get("attributes", dict())))
+ranges = sorted(set(node["data"]["attributes"]["range"]
+                    for node in elements if "range" in node["data"].get("attributes", dict())))
+
 
 # Initialize Dash app
 app = Dash(__name__)
@@ -112,21 +115,21 @@ app.layout = html.Div([
     Input("domain-filter", "value"),
     Input("range-filter", "value")
 )
-def filter_edges(selected_domains, selected_ranges):
+def filter_graph(selected_domains, selected_ranges):
     """Filter edges based on domain and range selections."""
     if not selected_domains and not selected_ranges:
         return elements  # Show all elements if no filters applied
 
-    filtered_edges = [
-        edge for edge in elements if "source" in edge["data"] and (
-                (not selected_domains or edge["data"]["domain"] in selected_domains) and
-                (not selected_ranges or edge["data"]["range"] in selected_ranges)
-        )
-    ]
+    selected_domains_set = bd.convert_to_set(selected_domains)
+    selected_ranges_set = bd.convert_to_set(selected_ranges)
 
-    # Get the unique node IDs from the filtered edges
-    node_ids = {edge["data"]["source"] for edge in filtered_edges} | {edge["data"]["target"] for edge in filtered_edges}
-    filtered_nodes = [node for node in elements if "id" in node["data"] and node["data"]["id"] in node_ids]
+    filtered_nodes = [node for node in elements if "id" in node["data"] and
+                      (not selected_domains or (node["data"]["attributes"].get("domain", "") in selected_domains_set)) and
+                      (not selected_ranges or (node["data"]["attributes"].get("range", "") in selected_ranges_set))]
+    filtered_node_ids = {node["data"]["id"] for node in filtered_nodes}
+
+    filtered_edges = [edge for edge in elements if "source" in edge["data"] and
+                      edge["data"]["source"] in filtered_node_ids and edge["data"]["target"] in filtered_node_ids]
 
     return filtered_nodes + filtered_edges
 
