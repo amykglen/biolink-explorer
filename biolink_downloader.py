@@ -123,11 +123,12 @@ class BiolinkDownloader:
         return predicate_dag
 
     def convert_to_dash_format(self, nx_dag: nx.DiGraph) -> List[dict]:
+        graph_type = "predicates" if self.root_predicate in nx_dag.nodes() else "categories"
         dict_dag = json_graph.node_link_data(nx_dag, edges="edges")
         dash_nodes = [{"data": {"id": node["id"],
                                 "label": node["id"],
                                 "attributes": self.extract_attributes(node)},
-                       "classes": self.get_node_classes(node)}
+                       "classes": self.get_node_classes(node, graph_type)}
                       for node in dict_dag["nodes"]]
         dash_edges = [{"data": {"source": edge["source"],
                                 "target": edge["target"],
@@ -139,13 +140,14 @@ class BiolinkDownloader:
         return {prop_name: value for prop_name, value in nx_item.items()
                 if prop_name not in self.core_nx_properties}
 
-    def get_node_classes(self, dag_node) -> str:
+    def get_node_classes(self, dag_node: dict, graph_type: str) -> str:
         classes = set()
         if dag_node.get("is_mixin"):
             classes.add("mixin")
-        if (("domain" not in dag_node or dag_node["domain"] == self.root_category) and
-                ("range" not in dag_node or dag_node["range"] == self.root_category)):
-            classes.add("unspecific")
+        if graph_type == "predicates":
+            if (("domain" not in dag_node or dag_node["domain"] == self.root_category) and
+                    ("range" not in dag_node or dag_node["range"] == self.root_category)):
+                classes.add("unspecific")
         return " ".join(classes)
 
     @staticmethod

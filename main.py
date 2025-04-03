@@ -54,14 +54,17 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
                           element["data"]["target"] in relevant_node_ids]
         relevant_elements = relevant_nodes + relevant_edges
 
-    if search_nodes_expanded:
-        # First ensure the nodes the user searched for are highlighted visually
-        for element in element_set:
-            if "id" in element["data"]:
-                element["classes"].replace("searched", "").strip()
+    # First clear all node highlights from previous searches
+    for element in element_set:
+        if "id" in element["data"]:
+            element["classes"] = element["classes"].replace("searched", "").strip()
+            if "searched" in element["classes"]:
                 print(element["classes"])
-                if element["data"]["id"] in search_nodes:
-                    element["classes"] += " searched"
+    if search_nodes:
+        # Ensure the nodes the user searched for are highlighted visually
+        for element in element_set:
+            if "id" in element["data"] and element["data"]["id"] in search_nodes:
+                element["classes"] += " searched"
         # Then filter down so we only show those nodes and their lineages
         relevant_nodes = [element for element in relevant_elements if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
         relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
@@ -126,7 +129,7 @@ node_info_div_style = {
 main_styling = [
     # Style for nodes: small black circles with labels to the right, with colored label backgrounds
     {"selector": "node", "style": {
-        "background-color": "#e3eac8",
+        "background-color": "#dae3b6",
         "width": "label",
         "height": "label",
         "label": "data(label)",
@@ -141,7 +144,7 @@ main_styling = [
         "border-width": "1px",
         "border-color": "#c7d591",
     }},
-    # Special style for nodes with is_mixin = True
+    # Special style for nodes with certain classes
     {"selector": ".mixin",
      "style": {
          "border-width": "0px",
