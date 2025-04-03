@@ -42,7 +42,7 @@ def get_node_info(selected_nodes) -> any:
         # No node selected (list is empty), display the default text
         return "Click on a node to see info"
 
-def filter_graph(element_set, selected_domains, selected_ranges, include_mixins, search_nodes_expanded):
+def filter_graph(element_set, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded):
     """Filter edges based on filter selections."""
     if "include" in include_mixins:
         relevant_elements = element_set
@@ -55,6 +55,14 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
         relevant_elements = relevant_nodes + relevant_edges
 
     if search_nodes_expanded:
+        # First ensure the nodes the user searched for are highlighted visually
+        for element in element_set:
+            if "id" in element["data"]:
+                element["classes"].replace("searched", "").strip()
+                print(element["classes"])
+                if element["data"]["id"] in search_nodes:
+                    element["classes"] += " searched"
+        # Then filter down so we only show those nodes and their lineages
         relevant_nodes = [element for element in relevant_elements if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
         relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
         relevant_edges = [element for element in element_set if "source" in element["data"] and
@@ -144,6 +152,11 @@ main_styling = [
      "style": {
          "background-color": "#dcdcdc",
          "border-color": "#c2c2c2"
+     }},
+    {"selector": ".searched",
+     "style": {
+         "border-width": "2px",
+         "border-color": "#ff5500"
      }},
     # Style for edges: curved edges
     {"selector": "edge", "style": {
@@ -271,7 +284,7 @@ def filter_graph_predicates(selected_domains, selected_ranges, include_mixins, s
         search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
     else:
         search_nodes_expanded = set()
-    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes_expanded)
+    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded)
 
 @app.callback(
     Output("cytoscape-dag-cats", "elements"),
@@ -285,7 +298,7 @@ def filter_graph_categories(include_mixins, search_nodes):
         search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
     else:
         search_nodes_expanded = set()
-    return filter_graph(elements_categories, [], [], include_mixins, search_nodes_expanded)
+    return filter_graph(elements_categories, [], [], include_mixins, search_nodes, search_nodes_expanded)
 
 
 # Callbacks to display node info in the bottom area when a node is clicked
