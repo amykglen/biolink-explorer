@@ -85,8 +85,10 @@ class BiolinkDownloader:
             slot_name = self.convert_to_biolink_snakecase(slot_name_english)
 
             # Only record this if it's a canonical predicate
-            is_canonical_predicate = info.get("annotations", dict()).get("canonical_predicate")
-            if is_canonical_predicate:
+            # NOTE: I think only predicates that have two forms are labeled as 'canonical'; single-form are not
+            labeled_as_canonical = info.get("annotations", dict()).get("canonical_predicate")
+            has_inverse_specified = info.get("inverse")
+            if labeled_as_canonical or not has_inverse_specified:
                 self.add_node_if_doesnt_exist(predicate_dag, slot_name)
                 # Record node metadata
                 node = predicate_dag.nodes[slot_name]
