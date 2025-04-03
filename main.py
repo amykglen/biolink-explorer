@@ -91,7 +91,7 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
 
 def get_mixin_filter(filter_id: str) -> any:
     return html.Div([
-            html.Label("Include mixins?"),
+            html.Label("Show mixins?"),
             dcc.Checklist(
                 id=filter_id,
                 options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
@@ -101,12 +101,12 @@ def get_mixin_filter(filter_id: str) -> any:
 
 def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
     return html.Div([
-        html.Label("Filter by Node(s):"),
+        html.Label("Filter by item(s):"),
         dcc.Dropdown(
             id=filter_id,
             options=[{"label": node_name, "value": node_name} for node_name in node_names],
             multi=True,
-            placeholder="Select node(s)..."
+            placeholder="Select items... (will show items & their lineages)"
         )
     ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
 
@@ -137,12 +137,13 @@ main_styling = [
         "shape": "round-rectangle",
         "text-valign": "center",
         "text-halign": "center",
-        "font-size": "18px",
+        "font-size": "14px",
         "cursor": "pointer",
         "padding": "3px",
         "background-opacity": 0.7,
-        "border-width": "1px",
-        "border-color": "#c7d591",
+        "border-width": "2px",
+        "border-color": "#bece7f",
+        "border-opacity": 0.7
     }},
     # Special style for nodes with certain classes
     {"selector": ".mixin",
@@ -158,7 +159,7 @@ main_styling = [
      }},
     {"selector": ".searched",
      "style": {
-         "border-width": "2px",
+         "border-width": "3px",
          "border-color": "#ff5500"
      }},
     # Style for edges: curved edges
@@ -182,6 +183,13 @@ main_styling = [
 ]
 
 filters_wrapper_style = {"margin": "10px", "display": "flex", "flex-direction": "row", "width": "100%"}
+
+layout_settings = {"name": "dagre",
+                   "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
+                   "spacingFactor": 0.34,  # Adjust spacing between nodes
+                   "nodeDimensionsIncludeLabels": True,
+                   # "nodeSep": 50,  # Adjust horizontal spacing
+                   "rankSep": 640}  # Adjust vertical spacing (between ranks)
 
 
 # --------------------------------------------------- App ---------------------------------------------------------- #
@@ -233,35 +241,23 @@ filters_div_cats = html.Div([
 # Define our tabs
 app.layout = html.Div([
     dcc.Tabs([
-        dcc.Tab(label="categories", children=[
+        dcc.Tab(label="Categories", children=[
             filters_div_cats,
             cyto.Cytoscape(
                 id="cytoscape-dag-cats",
                 elements=elements_categories,
-                layout={"name": "dagre",
-                        "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                        "spacingFactor": 0.35,  # Adjust spacing between nodes
-                        "nodeDimensionsIncludeLabels": True,
-                        # "nodeSep": 50,  # Adjust horizontal spacing
-                        "rankSep": 700,  # Adjust vertical spacing (between ranks)
-                        },
+                layout=layout_settings,
                 style={"width": "100%", "height": "800px"},
                 stylesheet=main_styling
             ),
             html.Div(id="node-info-cats", style=node_info_div_style)
         ]),
-        dcc.Tab(label="predicates", children=[
+        dcc.Tab(label="Predicates", children=[
             filters_div_preds,
             cyto.Cytoscape(
                 id="cytoscape-dag-preds",
                 elements=elements_predicates,
-                layout={"name": "dagre",
-                        "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                        "spacingFactor": 0.35,  # Adjust spacing between nodes
-                        "nodeDimensionsIncludeLabels": True,
-                        # "nodeSep": 50,  # Adjust horizontal spacing
-                        "rankSep": 700,  # Adjust vertical spacing (between ranks)
-                        },
+                layout=layout_settings,
                 style={"width": "100%", "height": "800px"},
                 stylesheet=main_styling
             ),
