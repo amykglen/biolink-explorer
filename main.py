@@ -95,7 +95,7 @@ def get_mixin_filter(filter_id: str) -> any:
             dcc.Checklist(
                 id=filter_id,
                 options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
-                value=["include"],  # Default: Show all nodes/edges
+                value=[],  # Default: Show all nodes/edges
             )
         ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
 
@@ -122,7 +122,7 @@ node_info_div_style = {
     "background-color": "#f9f9f9",
     "border-top": "1px solid #ddd",
     "text-align": "center",
-    "font-size": "16px",
+    "font-size": "12px",
     "color": "black"
 }
 
@@ -137,7 +137,7 @@ main_styling = [
         "shape": "round-rectangle",
         "text-valign": "center",
         "text-halign": "center",
-        "font-size": "10px",
+        "font-size": "18px",
         "cursor": "pointer",
         "padding": "3px",
         "background-opacity": 0.7,
@@ -240,7 +240,7 @@ app.layout = html.Div([
                 elements=elements_categories,
                 layout={"name": "dagre",
                         "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                        "spacingFactor": 0.28,  # Adjust spacing between nodes
+                        "spacingFactor": 0.35,  # Adjust spacing between nodes
                         "nodeDimensionsIncludeLabels": True,
                         # "nodeSep": 50,  # Adjust horizontal spacing
                         "rankSep": 700,  # Adjust vertical spacing (between ranks)
@@ -257,7 +257,7 @@ app.layout = html.Div([
                 elements=elements_predicates,
                 layout={"name": "dagre",
                         "rankDir": "LR",  # Can be LR (left-to-right) or TB (top-to-bottom)
-                        "spacingFactor": 0.28,  # Adjust spacing between nodes
+                        "spacingFactor": 0.35,  # Adjust spacing between nodes
                         "nodeDimensionsIncludeLabels": True,
                         # "nodeSep": 50,  # Adjust horizontal spacing
                         "rankSep": 700,  # Adjust vertical spacing (between ranks)
