@@ -1,4 +1,4 @@
-from typing import Set
+from typing import Set, Optional
 
 from dash import Dash, dcc, html, Input, Output
 import dash_cytoscape as cyto
@@ -80,8 +80,8 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
     selected_ranges_set = bd.get_ancestors_nx(bd.category_dag, selected_ranges)
 
     filtered_nodes = [node for node in relevant_elements if "id" in node["data"] and
-                      (not selected_domains or (node["data"]["attributes"].get("domain", "") in selected_domains_set)) and
-                      (not selected_ranges or (node["data"]["attributes"].get("range", "") in selected_ranges_set))]
+                      (not selected_domains or "domain" not in node["data"]["attributes"] or node["data"]["attributes"]["domain"] in selected_domains_set) and
+                      (not selected_ranges or "range" not in node["data"]["attributes"] or node["data"]["attributes"]["range"] in selected_ranges_set)]
     filtered_node_ids = {node["data"]["id"] for node in filtered_nodes}
 
     filtered_edges = [edge for edge in relevant_elements if "source" in edge["data"] and
@@ -89,13 +89,13 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
 
     return filtered_nodes + filtered_edges
 
-def get_mixin_filter(filter_id: str) -> any:
+def get_mixin_filter(filter_id: str, show_by_default: Optional[bool] = False) -> any:
     return html.Div([
             html.Label("Show mixins?"),
             dcc.Checklist(
                 id=filter_id,
                 options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
-                value=[],  # Default: Show all nodes/edges
+                value=["include"] if show_by_default else [],
             )
         ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
 
@@ -212,7 +212,7 @@ app = Dash(__name__)
 
 filters_div_preds = html.Div([
     get_search_filter("node-search-preds", all_predicates),
-    get_mixin_filter("include-mixins-preds"),
+    get_mixin_filter("include-mixins-preds", show_by_default=True),
     html.Div([
         html.Label("Filter by Domain:"),
         dcc.Dropdown(
@@ -235,7 +235,7 @@ filters_div_preds = html.Div([
 
 filters_div_cats = html.Div([
     get_search_filter("node-search-cats", all_categories),
-    get_mixin_filter("include-mixins-cats")
+    get_mixin_filter("include-mixins-cats", show_by_default=False)
 ], style=filters_wrapper_style)
 
 

@@ -99,7 +99,6 @@ class BiolinkDownloader:
                 if info.get("range"):
                     node["range"] = self.convert_to_biolink_camelcase(info["range"])
 
-
                 # Record relationship between this node and its parent, if provided
                 parent_name_english = info.get("is_a")
                 if parent_name_english:
