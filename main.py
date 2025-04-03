@@ -12,34 +12,35 @@ cyto.load_extra_layouts()
 # ---------------------------------------------- Helper functions ------------------------------------------------- #
 
 def get_node_info(selected_nodes) -> any:
-    """Update the info display area CONTENT based on node selection."""
+    """Update the info display area CONTENT based on node selection in a table format."""
 
-    if selected_nodes: # Check if the list is not empty
-        # A node (or nodes) is selected, display info for the first one
-        node_data = selected_nodes[0] # Get the data of the first selected node
+    if selected_nodes:
+        node_data = selected_nodes[0]
 
-        if node_data and "id" in node_data: # Extra check just in case
+        if node_data and "id" in node_data:
             attributes = node_data.get("attributes", {})
-            attribute_text = "\n".join(f"{k}: {v}" for k, v in attributes.items()) or "No attributes defined."
             node_id = node_data.get('id')
-            link = None
-            if node_id:
-                url = f"https://biolink.github.io/biolink-model/{node_id}"
-                link = html.A(f"View {node_id} Documentation", href=url, target="_blank",
-                            style={"color": "blue", "text-decoration": "underline", "display": "block", "margin-top": "10px"})
 
+            table_rows = []
+            for key, value in attributes.items():
+                table_rows.append(html.Tr([
+                    html.Td(key, style={'text-align': 'right', 'padding-right': '10px', 'vertical-align': 'top', 'width': '150px', 'font-family': 'monospace'}),
+                    html.Td(str(value), style={'width': 'auto'}) # Convert value to string to avoid potential errors
+                ]))
+
+            url = f"https://biolink.github.io/biolink-model/{node_id}"
+            title_content = [html.Span(f"{node_id} "),
+                             html.A("docs", href=url, target="_blank",
+                                    style={"color": "#84cfe8", "font-size": "11px"})]
             content = [
-                html.H4(f"Information for {node_data.get('label', 'N/A')} ({node_id})"), # Show ID in title
-                html.Pre(attribute_text, style={"text-align": "left", "max-width": "800px", "margin": "auto", "white-space": "pre-wrap"})
+                html.H4(title_content),
+                html.Table(table_rows, style={'width': '800px', 'margin': 'auto', 'text-align': 'left'})
             ]
-            if link:
-                content.append(link)
+
             return content
         else:
-            # Should not happen if selected_nodes is not empty and contains valid node data
-             return "Error: Selected node data is invalid."
+            return "Error: Selected node data is invalid."
     else:
-        # No node selected (list is empty), display the default text
         return "Click on a node to see info"
 
 def filter_graph(element_set, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded):
@@ -123,7 +124,6 @@ node_info_div_style = {
     "background-color": "#f9f9f9",
     "border-top": "1px solid #ddd",
     "text-align": "center",
-    "font-size": "12px",
     "color": "black"
 }
 

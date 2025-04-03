@@ -63,7 +63,14 @@ class BiolinkDownloader:
 
             # Record node metadata
             self.add_node_if_doesnt_exist(category_dag, class_name)
-            category_dag.nodes[class_name]["is_mixin"] = True if info.get("mixin") else False
+            node = category_dag.nodes[class_name]
+            node["is_mixin"] = True if info.get("mixin") else False
+            if info.get("description"):
+                node["description"] = info["description"]
+            if info.get("notes"):
+                node["notes"] = info["notes"]
+            if info.get("aliases"):
+                node["aliases"] = info["aliases"]
 
         # Last, filter out things that are not categories (Biolink 'classes' includes other things too..)
         non_category_node_ids = [node_id for node_id, data in category_dag.nodes(data=True)
@@ -98,6 +105,12 @@ class BiolinkDownloader:
                     node["domain"] = self.convert_to_biolink_camelcase(info["domain"])
                 if info.get("range"):
                     node["range"] = self.convert_to_biolink_camelcase(info["range"])
+                if info.get("description"):
+                    node["description"] = info["description"]
+                if info.get("notes"):
+                    node["notes"] = info["notes"]
+                if info.get("aliases"):
+                    node["aliases"] = info["aliases"]
 
                 # Record relationship between this node and its parent, if provided
                 parent_name_english = info.get("is_a")
