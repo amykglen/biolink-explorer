@@ -100,13 +100,14 @@ def get_mixin_filter(filter_id: str) -> any:
         ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
 
 def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
+    item_type = "predicate" if "pred" in filter_id else "category"
     return html.Div([
-        html.Label("Filter by item(s):"),
+        html.Label(f"Filter by {item_type}(s):"),
         dcc.Dropdown(
             id=filter_id,
             options=[{"label": node_name, "value": node_name} for node_name in node_names],
             multi=True,
-            placeholder="Select items... (will show items & their lineages)"
+            placeholder=f"Select items... (will filter to their lineages)"
         )
     ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
 
@@ -154,8 +155,8 @@ main_styling = [
     }},
     {"selector": ".unspecific",
      "style": {
-         "background-color": "#dcdcdc",
-         "border-color": "#c2c2c2"
+         "background-color": "#e9e9e9",
+         "border-color": "#cfcfcf"
      }},
     {"selector": ".searched",
      "style": {
