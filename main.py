@@ -21,35 +21,52 @@ def get_node_info(selected_nodes) -> any:
             attributes = node_data.get("attributes", {})
             node_id = node_data.get('id')
 
+            attributes_to_show = {"description": attributes.get("description", "Not provided."),
+                                  "notes": attributes.get("notes", "-"),
+                                  "aliases": attributes.get("aliases", "-")}
             table_rows = []
-            for key, value in attributes.items():
+            for key, value in attributes_to_show.items():
                 table_rows.append(html.Tr([
-                    html.Td(key, style={'text-align': 'right', 'padding-right': '10px', 'vertical-align': 'top', 'width': '150px', 'font-family': 'monospace'}),
+                    html.Td(key, style={'text-align': 'right', 'padding-right': '10px', 'vertical-align': 'top',
+                                        'width': '150px', 'font-family': 'monospace'}),
                     html.Td(str(value), style={'width': 'auto'})
                 ]))
 
+            # Craft the title
             url = f"https://biolink.github.io/biolink-model/{node_id}"
             title_content = [html.Span(f"{node_id} "),
                              html.A("docs", href=url, target="_blank",
-                                    style={"color": "#84cfe8", "font-size": "11px"})]
-
-            chip_style = {'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'margin-left': '5px', 'fontSize': '12px', 'display': 'inline-block'}
-
+                                    style={"color": "#84cfe8", "font-size": "11px", "margin-left": "3px"})]
             if attributes.get("is_mixin"):
-                title_content.append(html.Div("mixin", style=chip_style))
-            chips = []
+                title_content.append(html.Div("mixin", style=get_chip_style("#FFEBC2")))
             if attributes.get("is_symmetric"):
-                chips.append(html.Div("symmetric", style={'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'marginRight': '5px', 'fontSize': '12px'}))
-            if attributes.get("domain") and attributes.get("range"):
-                chips.append(html.Div(f"{attributes['domain']} --> {attributes['range']}", style={'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'marginRight': '5px', 'fontSize': '12px'}))
+                title_content.append(html.Div("symmetric", style=get_chip_style("#F7DEEA")))
 
+            # Indicate domain/range as applicable
+            domain_range_info = []
+            if "domain" in attributes:  # If domain is there, range will be there
+                domain_range_info.append(html.Span("domain: ", style={'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
+                domain_range_info.append(html.Div(attributes['domain'], style=get_chip_style("#ececec")))
+                domain_range_info.append(html.Span(" → ", style={'margin': '0 5px'}))
+                domain_range_info.append(html.Span("range: ", style={'marginLeft': '5px', 'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
+                domain_range_info.append(html.Div(attributes['range'], style=get_chip_style("#ececec")))
+
+            # title_element = html.H4(title_content)
+            # domain_range_element = html.Div(domain_range_info,
+            #                                 style={'display': 'flex', 'justify-content': 'center',
+            #                                        'marginBottom': '5px', 'align-items': 'center', 'background-color': 'yellow'}),
+            # attributes_element = html.Table(table_rows, style={'width': '800px', 'margin': 'auto',
+            #                                                          'text-align': 'left'})
             content = [
-                html.H4(title_content),
-                html.Div(chips, style={'display': 'flex', 'marginBottom': '10px', 'width': '800px', 'margin': 'auto', 'background-color': 'yellow'}),
-                html.Table(table_rows, style={'width': '800px', 'margin': 'auto', 'text-align': 'left'})
+                html.H4(title_content, style={'margin': '0px 0px 9px 0px'}),
+                html.Div(domain_range_info,
+                         style={'display': 'flex', 'justify-content': 'center', 'align-items': 'center',
+                                'margin-bottom': '5px', 'margin-top': '0px'}),
+                html.Table(table_rows, style={'width': '800px', 'margin': 'auto',
+                                              'text-align': 'left'})
             ]
-
-            return content
+            # content = [title_element, domain_range_element, attributes_element] if domain_range_info else [title_element, attributes_element]
+            return content if domain_range_info else [content[0], content[-1]]
         else:
             return "Error: Selected node data is invalid."
     else:
@@ -93,8 +110,8 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
     selected_ranges_set = bd.get_ancestors_nx(bd.category_dag, selected_ranges)
 
     filtered_nodes = [node for node in relevant_elements if "id" in node["data"] and
-                      (not selected_domains or "domain" not in node["data"]["attributes"] or node["data"]["attributes"]["domain"] in selected_domains_set) and
-                      (not selected_ranges or "range" not in node["data"]["attributes"] or node["data"]["attributes"]["range"] in selected_ranges_set)]
+                      (not selected_domains or not node["data"]["attributes"].get("domain") or node["data"]["attributes"]["domain"] in selected_domains_set) and
+                      (not selected_ranges or not node["data"]["attributes"].get("range") or node["data"]["attributes"]["range"] in selected_ranges_set)]
     filtered_node_ids = {node["data"]["id"] for node in filtered_nodes}
 
     filtered_edges = [edge for edge in relevant_elements if "source" in edge["data"] and
@@ -123,6 +140,11 @@ def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
             placeholder=f"Select items... (will filter to their lineages)"
         )
     ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
+
+def get_chip_style(color: str) -> dict:
+    chip_style = {'padding': '2px 5px', 'border-radius': '3px', 'background-color': color,
+                  'margin-left': '8px', 'fontSize': '12px', 'display': 'inline-block'}
+    return chip_style
 
 
 # ----------------------------------------------- Style variables -------------------------------------------------- #

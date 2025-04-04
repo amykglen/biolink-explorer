@@ -101,10 +101,8 @@ class BiolinkDownloader:
                 node = predicate_dag.nodes[slot_name]
                 node["is_symmetric"] = True if info.get("symmetric") else False
                 node["is_mixin"] = True if info.get("mixin") else False
-                if info.get("domain"):
-                    node["domain"] = self.convert_to_biolink_camelcase(info["domain"])
-                if info.get("range"):
-                    node["range"] = self.convert_to_biolink_camelcase(info["range"])
+                node["domain"] = self.convert_to_biolink_camelcase(info.get("domain"))
+                node["range"] = self.convert_to_biolink_camelcase(info.get("range"))
                 if info.get("description"):
                     node["description"] = info["description"]
                 if info.get("notes"):
@@ -165,8 +163,11 @@ class BiolinkDownloader:
         return " ".join(classes)
 
     @staticmethod
-    def convert_to_biolink_camelcase(english_term: str):
-        return "".join([f"{word[0].upper()}{word[1:]}" for word in english_term.split(" ")])
+    def convert_to_biolink_camelcase(english_term: Optional[str]):
+        if isinstance(english_term, str):
+            return "".join([f"{word[0].upper()}{word[1:]}" for word in english_term.split(" ")])
+        else:
+            return english_term
 
     @staticmethod
     def convert_to_biolink_snakecase(english_term: str):
