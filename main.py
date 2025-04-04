@@ -67,17 +67,24 @@ def get_node_info(selected_nodes) -> any:
     else:
         return "Click on a node to see info"
 
+def filter_graph_to_certain_nodes(node_ids, relevant_elements) -> list:
+    relevant_nodes = [element for element in relevant_elements if
+                      "id" in element["data"] and element["data"]["id"] in node_ids]
+    relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
+    relevant_edges = [element for element in relevant_elements if "source" in element["data"] and
+                      element["data"]["source"] in relevant_node_ids and
+                      element["data"]["target"] in relevant_node_ids]
+    relevant_elements = relevant_nodes + relevant_edges
+    return relevant_elements
+
 def filter_graph(element_set, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded):
     """Filter edges based on filter selections."""
     if "include" in include_mixins:
         relevant_elements = element_set
     else:
-        relevant_nodes = [element for element in element_set if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]]
-        relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
-        relevant_edges = [element for element in element_set if "source" in element["data"] and
-                          element["data"]["source"] in relevant_node_ids and
-                          element["data"]["target"] in relevant_node_ids]
-        relevant_elements = relevant_nodes + relevant_edges
+        relevant_node_ids = [element["data"]["id"] for element in element_set
+                             if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]]
+        relevant_elements = filter_graph_to_certain_nodes(relevant_node_ids, element_set)
 
     # First clear all node highlights from previous searches
     for element in element_set:
@@ -91,12 +98,9 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
             if "id" in element["data"] and element["data"]["id"] in search_nodes:
                 element["classes"] += " searched"
         # Then filter down so we only show those nodes and their lineages
-        relevant_nodes = [element for element in relevant_elements if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
-        relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
-        relevant_edges = [element for element in element_set if "source" in element["data"] and
-                          element["data"]["source"] in relevant_node_ids and
-                          element["data"]["target"] in relevant_node_ids]
-        relevant_elements = relevant_nodes + relevant_edges
+        relevant_node_ids = [element["data"]["id"] for element in relevant_elements
+                             if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
+        relevant_elements = filter_graph_to_certain_nodes(relevant_node_ids, element_set)
 
     if not selected_domains and not selected_ranges:
         return relevant_elements  # Show all elements if no filters applied
@@ -104,15 +108,12 @@ def filter_graph(element_set, selected_domains, selected_ranges, include_mixins,
     selected_domains_set = bd.get_ancestors_nx(bd.category_dag, selected_domains)
     selected_ranges_set = bd.get_ancestors_nx(bd.category_dag, selected_ranges)
 
-    filtered_nodes = [node for node in relevant_elements if "id" in node["data"] and
-                      (not selected_domains or not node["data"]["attributes"].get("domain") or node["data"]["attributes"]["domain"] in selected_domains_set) and
-                      (not selected_ranges or not node["data"]["attributes"].get("range") or node["data"]["attributes"]["range"] in selected_ranges_set)]
-    filtered_node_ids = {node["data"]["id"] for node in filtered_nodes}
+    filtered_node_ids = [node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
+                         (not selected_domains or not node["data"]["attributes"].get("domain") or node["data"]["attributes"]["domain"] in selected_domains_set) and
+                         (not selected_ranges or not node["data"]["attributes"].get("range") or node["data"]["attributes"]["range"] in selected_ranges_set)]
+    filtered_elements = filter_graph_to_certain_nodes(filtered_node_ids, relevant_elements)
 
-    filtered_edges = [edge for edge in relevant_elements if "source" in edge["data"] and
-                      edge["data"]["source"] in filtered_node_ids and edge["data"]["target"] in filtered_node_ids]
-
-    return filtered_nodes + filtered_edges
+    return filtered_elements
 
 def get_mixin_filter(filter_id: str, show_by_default: Optional[bool] = False) -> any:
     return html.Div([
