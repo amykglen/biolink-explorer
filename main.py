@@ -51,12 +51,6 @@ def get_node_info(selected_nodes) -> any:
                 domain_range_info.append(html.Span("range: ", style={'marginLeft': '5px', 'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
                 domain_range_info.append(html.Div(attributes['range'], style=get_chip_style("#ececec")))
 
-            # title_element = html.H4(title_content)
-            # domain_range_element = html.Div(domain_range_info,
-            #                                 style={'display': 'flex', 'justify-content': 'center',
-            #                                        'marginBottom': '5px', 'align-items': 'center', 'background-color': 'yellow'}),
-            # attributes_element = html.Table(table_rows, style={'width': '800px', 'margin': 'auto',
-            #                                                          'text-align': 'left'})
             content = [
                 html.H4(title_content, style={'margin': '0px 0px 9px 0px'}),
                 html.Div(domain_range_info,
@@ -65,7 +59,6 @@ def get_node_info(selected_nodes) -> any:
                 html.Table(table_rows, style={'width': '800px', 'margin': 'auto',
                                               'text-align': 'left'})
             ]
-            # content = [title_element, domain_range_element, attributes_element] if domain_range_info else [title_element, attributes_element]
             return content if domain_range_info else [content[0], content[-1]]
         else:
             return "Error: Selected node data is invalid."

@@ -157,8 +157,8 @@ class BiolinkDownloader:
         if dag_node.get("is_mixin"):
             classes.add("mixin")
         if graph_type == "predicates":
-            if (("domain" not in dag_node or dag_node["domain"] == self.root_category) and
-                    ("range" not in dag_node or dag_node["range"] == self.root_category)):
+            if ((not dag_node.get("domain") or dag_node["domain"] == self.root_category) and
+                    (not dag_node.get("range") or dag_node["range"] == self.root_category)):
                 classes.add("unspecific")
         return " ".join(classes)
 
