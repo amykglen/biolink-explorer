@@ -21,7 +21,7 @@ def get_node_info(selected_nodes) -> any:
             attributes = node_data.get("attributes", {})
             node_id = node_data.get('id')
 
-            attributes_to_show = {"description": attributes.get("description", "Not provided."),
+            attributes_to_show = {"description": attributes.get("description", "-"),
                                   "notes": attributes.get("notes", "-"),
                                   "aliases": attributes.get("aliases", "-")}
             table_rows = []
@@ -246,7 +246,7 @@ filters_div_preds = html.Div([
     get_search_filter("node-search-preds", all_predicates),
     get_mixin_filter("include-mixins-preds", show_by_default=True),
     html.Div([
-        html.Label("Filter by Domain:"),
+        html.Label("Filter by Domain (hierarchical):"),
         dcc.Dropdown(
             id="domain-filter",
             options=[{"label": d, "value": d} for d in domains],
@@ -255,7 +255,7 @@ filters_div_preds = html.Div([
         )
     ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"}),
     html.Div([
-        html.Label("Filter by Range:"),
+        html.Label("Filter by Range (hierarchical):"),
         dcc.Dropdown(
             id="range-filter",
             options=[{"label": r, "value": r} for r in ranges],
