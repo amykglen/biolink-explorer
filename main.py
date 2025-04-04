@@ -181,7 +181,7 @@ class BiolinkDashApp:
 
         info = [
         html.Div(
-            style={"padding": "30px", "max-width": "800px", "margin": "0 auto", "margin-bottom": "20px", "overflowY": "auto", "height": "calc(100vh - 96px)"},
+            style={"padding": "30px", "max-width": "800px", "margin": "0 auto", "margin-bottom": "20px", "overflowY": "auto", "height": "calc(100vh - 150px)"},
             children=[
                 html.H3("About this app"),
                 html.P([
