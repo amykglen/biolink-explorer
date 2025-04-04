@@ -240,7 +240,7 @@ all_predicates = sorted(set(bd.predicate_dag.nodes()))
 
 
 # Initialize Dash app
-app = Dash(__name__)
+app = Dash(__name__, title="Biolink Viz")
 
 filters_div_preds = html.Div([
     get_search_filter("node-search-preds", all_predicates),
