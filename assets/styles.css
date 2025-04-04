@@ -1,0 +1,12 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%; /* Ensure body also takes full height */
+    overflow: hidden; /* Prevent scrollbars if content fits within viewport */
+}
+
+#app-container { /* If you have a main container div in your app.layout */
+    height: 100vh; /* Use viewport height for the main container */
+    display: flex;
+    flex-direction: column;
+}

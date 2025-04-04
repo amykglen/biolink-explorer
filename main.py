@@ -12,7 +12,7 @@ cyto.load_extra_layouts()
 # ---------------------------------------------- Helper functions ------------------------------------------------- #
 
 def get_node_info(selected_nodes) -> any:
-    """Update the info display area CONTENT based on node selection in a table format."""
+    """Update the info display area CONTENT based on node selection in a table format with mixin, symmetric, and domain/range chips (using divs)."""
 
     if selected_nodes:
         node_data = selected_nodes[0]
@@ -25,15 +25,27 @@ def get_node_info(selected_nodes) -> any:
             for key, value in attributes.items():
                 table_rows.append(html.Tr([
                     html.Td(key, style={'text-align': 'right', 'padding-right': '10px', 'vertical-align': 'top', 'width': '150px', 'font-family': 'monospace'}),
-                    html.Td(str(value), style={'width': 'auto'}) # Convert value to string to avoid potential errors
+                    html.Td(str(value), style={'width': 'auto'})
                 ]))
 
             url = f"https://biolink.github.io/biolink-model/{node_id}"
             title_content = [html.Span(f"{node_id} "),
                              html.A("docs", href=url, target="_blank",
                                     style={"color": "#84cfe8", "font-size": "11px"})]
+
+            chip_style = {'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'margin-left': '5px', 'fontSize': '12px', 'display': 'inline-block'}
+
+            if attributes.get("is_mixin"):
+                title_content.append(html.Div("mixin", style=chip_style))
+            chips = []
+            if attributes.get("is_symmetric"):
+                chips.append(html.Div("symmetric", style={'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'marginRight': '5px', 'fontSize': '12px'}))
+            if attributes.get("domain") and attributes.get("range"):
+                chips.append(html.Div(f"{attributes['domain']} --> {attributes['range']}", style={'background-color': '#e0e0e0', 'padding': '2px 5px', 'border-radius': '3px', 'marginRight': '5px', 'fontSize': '12px'}))
+
             content = [
                 html.H4(title_content),
+                html.Div(chips, style={'display': 'flex', 'marginBottom': '10px', 'width': '800px', 'margin': 'auto', 'background-color': 'yellow'}),
                 html.Table(table_rows, style={'width': '800px', 'margin': 'auto', 'text-align': 'left'})
             ]
 
@@ -240,31 +252,41 @@ filters_div_cats = html.Div([
 
 
 # Define our tabs
-app.layout = html.Div([
-    dcc.Tabs([
-        dcc.Tab(label="Categories", children=[
-            filters_div_cats,
-            cyto.Cytoscape(
-                id="cytoscape-dag-cats",
-                elements=elements_categories,
-                layout=layout_settings,
-                style={"width": "100%", "height": "800px"},
-                stylesheet=main_styling
-            ),
-            html.Div(id="node-info-cats", style=node_info_div_style)
+app.layout = html.Div(
+    id="app-container",
+    children=[
+        dcc.Tabs([
+            dcc.Tab(label="Categories", children=[
+                html.Div(
+                    style={"display": "flex", "flex-direction": "column", "height": "calc(100vh - 100px)"}, # Adjust 50px for tabs height
+                    children=[
+                        filters_div_cats,
+                        cyto.Cytoscape(
+                            id="cytoscape-dag-cats",
+                            elements=elements_categories,
+                            layout=layout_settings,
+                            style={"width": "100%", "height": "100%"}, # Set height to 100% of parent
+                            stylesheet=main_styling
+                        ),
+                        html.Div(id="node-info-cats", style=node_info_div_style)
+                    ])
+            ]),
+            dcc.Tab(label="Predicates", children=[
+                html.Div(
+                    style={"display": "flex", "flex-direction": "column", "height": "calc(100vh - 100px)"}, # Adjust 50px for tabs height
+                    children=[
+                        filters_div_preds,
+                        cyto.Cytoscape(
+                            id="cytoscape-dag-preds",
+                            elements=elements_predicates,
+                            layout=layout_settings,
+                            style={"width": "100%", "height": "100%"}, # Set height to 100% of parent
+                            stylesheet=main_styling
+                        ),
+                        html.Div(id="node-info-preds", style=node_info_div_style)
+                    ])
+            ])
         ]),
-        dcc.Tab(label="Predicates", children=[
-            filters_div_preds,
-            cyto.Cytoscape(
-                id="cytoscape-dag-preds",
-                elements=elements_predicates,
-                layout=layout_settings,
-                style={"width": "100%", "height": "800px"},
-                stylesheet=main_styling
-            ),
-            html.Div(id="node-info-preds", style=node_info_div_style)
-        ])
-    ]),
 ])
 
 
