@@ -38,18 +38,20 @@ def get_node_info(selected_nodes) -> any:
                              html.A("docs", href=url, target="_blank",
                                     style={"color": "#84cfe8", "font-size": "11px", "margin-left": "3px"})]
             if attributes.get("is_mixin"):
-                title_content.append(html.Div("mixin", style=get_chip_style("#FFEBC2")))
+                title_content.append(html.Div("mixin", style=get_chip_style("#FFEBC2", True)))
             if attributes.get("is_symmetric"):
-                title_content.append(html.Div("symmetric", style=get_chip_style("#F7DEEA")))
+                title_content.append(html.Div("symmetric", style=get_chip_style("#F7DEEA", True)))
 
             # Indicate domain/range as applicable
             domain_range_info = []
             if "domain" in attributes:  # If domain is there, range will be there
                 domain_range_info.append(html.Span("domain: ", style={'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
-                domain_range_info.append(html.Div(attributes['domain'], style=get_chip_style("#ececec")))
+                domain_range_info.append(html.Div(attributes["domain"] if attributes["domain"] else "-",
+                                                  style=get_chip_style("#E8EED2", attributes["domain"])))
                 domain_range_info.append(html.Span(" → ", style={'margin': '0 5px'}))
                 domain_range_info.append(html.Span("range: ", style={'marginLeft': '5px', 'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
-                domain_range_info.append(html.Div(attributes['range'], style=get_chip_style("#ececec")))
+                domain_range_info.append(html.Div(attributes["range"] if attributes["range"] else "-",
+                                                  style=get_chip_style("#E8EED2", attributes["range"])))
 
             content = [
                 html.H4(title_content, style={'margin': '0px 0px 9px 0px'}),
@@ -134,7 +136,9 @@ def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
         )
     ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
 
-def get_chip_style(color: str) -> dict:
+def get_chip_style(color: str, chip_value: any) -> dict:
+    if chip_value is None or chip_value == bd.root_category:
+        color = "#ececec"
     chip_style = {'padding': '2px 5px', 'border-radius': '3px', 'background-color': color,
                   'margin-left': '8px', 'fontSize': '12px', 'display': 'inline-block'}
     return chip_style
