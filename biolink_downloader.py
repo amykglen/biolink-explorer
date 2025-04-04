@@ -16,13 +16,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 class BiolinkDownloader:
 
     def __init__(self, biolink_version: Optional[str] = None):
-        self.biolink_version = biolink_version if biolink_version else "master"  # Default to latest version
+        self.biolink_version = biolink_version if biolink_version else "master"
+        print(f"biolink version in BD is initially {self.biolink_version}")
         self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/{self.biolink_version}/biolink-model.yaml"
         self.biolink_yaml_vurl = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
         self.root_category = "NamedThing"
         self.root_predicate = "related_to"
         self.core_nx_properties = {"id", "source", "target"}
         self.biolink_model_raw = self.download_biolink_model()
+        self.biolink_version = self.biolink_model_raw["version"]
+        print(f"in bd, after updating bio version, it is {self.biolink_version}")
+
         self.category_dag = self.build_category_dag()
         self.category_dag_dash = self.convert_to_dash_format(self.category_dag)
         self.predicate_dag = self.build_predicate_dag()
@@ -35,6 +39,7 @@ class BiolinkDownloader:
             json.dump(self.predicate_dag_dash, predicate_file, indent=2)
 
     def download_biolink_model(self) -> dict:
+        print(f"in bd download, urls are {self.biolink_yaml_url}")
         response = requests.get(self.biolink_yaml_url, timeout=10)
         if response.status_code != 200:  # Sometimes Biolink's tags start with 'v', so try that
             response = requests.get(self.biolink_yaml_vurl, timeout=10)
