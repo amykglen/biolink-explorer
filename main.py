@@ -314,6 +314,7 @@ app.layout = html.Div(
 
 @app.callback(
     Output("cytoscape-dag-preds", "elements"),
+    Output("include-mixins-preds", "value"),
     Input("domain-filter", "value"),
     Input("range-filter", "value"),
     Input("include-mixins-preds", "value"),
@@ -321,26 +322,33 @@ app.layout = html.Div(
 )
 def filter_graph_predicates(selected_domains, selected_ranges, include_mixins, search_nodes):
     if search_nodes:
+        # Override the include mixins filter as necessary!
+        if any(bd.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+            include_mixins = ["include"]
         ancestors = bd.get_ancestors_nx(bd.predicate_dag, search_nodes)
         descendants = bd.get_descendants_nx(bd.predicate_dag, search_nodes)
         search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
     else:
         search_nodes_expanded = set()
-    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded)
+    return filter_graph(elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded), include_mixins
 
 @app.callback(
     Output("cytoscape-dag-cats", "elements"),
+    Output("include-mixins-cats", "value"),
     Input("include-mixins-cats", "value"),
     Input("node-search-cats", "value")
 )
 def filter_graph_categories(include_mixins, search_nodes):
     if search_nodes:
+        # Override the include mixins filter as necessary!
+        if any(bd.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+            include_mixins = ["include"]
         ancestors = bd.get_ancestors_nx(bd.category_dag, search_nodes)
         descendants = bd.get_descendants_nx(bd.category_dag, search_nodes)
         search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
     else:
         search_nodes_expanded = set()
-    return filter_graph(elements_categories, [], [], include_mixins, search_nodes, search_nodes_expanded)
+    return filter_graph(elements_categories, [], [], include_mixins, search_nodes, search_nodes_expanded), include_mixins
 
 
 # Callbacks to display node info in the bottom area when a node is clicked
