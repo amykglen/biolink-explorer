@@ -10,8 +10,8 @@ from styles import Styles
 cyto.load_extra_layouts()
 
 class BiolinkDashApp:
-    def __init__(self):
 
+    def __init__(self):
         self.biolink_version = "master"
         self.bd = None
         self.elements_predicates = None
@@ -24,15 +24,8 @@ class BiolinkDashApp:
         self.styles = Styles()
         self.update_biolink_data(self.biolink_version)
         self.app = Dash(__name__, title="Biolink Explorer")
-
-
-        # Extract unique domain and range values for dropdowns
-
-
         self.app.layout = self.get_layout()
         self.register_callbacks()
-
-
 
     # ---------------------------------------------- Helper functions ------------------------------------------------- #
 
@@ -140,7 +133,8 @@ class BiolinkDashApp:
 
         return filtered_elements
 
-    def get_mixin_filter(self, filter_id: str, show_by_default: Optional[bool] = False) -> any:
+    @staticmethod
+    def get_mixin_filter(filter_id: str, show_by_default: Optional[bool] = False) -> any:
         return html.Div([
                 html.Label("Show mixins?"),
                 dcc.Checklist(
@@ -150,7 +144,8 @@ class BiolinkDashApp:
                 )
             ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
 
-    def get_search_filter(self, filter_id: str, node_names: Set[str]) -> any:
+    @staticmethod
+    def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
         item_type = "predicate" if "pred" in filter_id else "category"
         return html.Div([
             html.Label(f"Search for {item_type}(s):"),
@@ -187,19 +182,22 @@ class BiolinkDashApp:
                 html.P([
                     "This application is designed to visualize and explore the relationships between "
                     "categories (i.e. node types) and predicates (i.e., edge types) within the ",
-                    html.A("Biolink Model", href="https://github.com/biolink/biolink-model", target="_blank"),
-                    ", a schema for biomedical knowledge graphs developed by the ",
-                    html.A("NCATS Biomedical Data Translator", href="https://ncats.nih.gov/research/research-activities/translator", target="_blank"),
+                    html.A("Biolink Model", href="https://github.com/biolink/biolink-model",
+                           target="_blank", style=self.styles.hyperlink_style),
+                    ", an open-source schema for biomedical knowledge graphs developed by the ",
+                    html.A("NCATS Biomedical Data Translator",
+                           href="https://ncats.nih.gov/research/research-activities/translator",
+                           target="_blank", style=self.styles.hyperlink_style),
                     " consortium."
                 ]),
                 html.H4("Using the tabs:"),
                 html.P("""
-                    The 'Categories' tab displays the hierarchy of categories in the Biolink Model.
+                    The 'Categories' tab displays the hierarchy of concept categories in the Biolink Model.
                     You can use the filters at the top to focus on specific
                     categories or include/exclude mixin categories.
                 """),
                 html.P("""
-                    The 'Predicates' tab shows the hierarchy of predicates in the Biolink Model.
+                    The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model.
                     Use the filters at the top to focus on specific predicates, include/exclude mixin predicates, 
                     and to filter predicates based on their domain and range.
                 """),
@@ -208,7 +206,7 @@ class BiolinkDashApp:
                     "Clicking on a node in either graph will display details from the ",
                     html.A("Biolink Model YAML",
                            href="https://github.com/biolink/biolink-model/blob/master/biolink-model.yaml",
-                           target="_blank"),
+                           target="_blank", style=self.styles.hyperlink_style),
                     " about that item in the area below the graph."
                 ]),
                 html.H5("Legend:"),
@@ -276,9 +274,11 @@ class BiolinkDashApp:
                         ]),
                 html.H4("Creators"),
                 html.P(["This application was developed by ",
-                        html.A("Amy Glen", href="https://github.com/amykglen", target="_blank"),
+                        html.A("Amy Glen", href="https://github.com/amykglen", target="_blank",
+                               style=self.styles.hyperlink_style),
                         " at ",
-                        html.A("Phenome Health", href="https://www.phenomehealth.org", target="_blank"),
+                        html.A("Phenome Health", href="https://www.phenomehealth.org", target="_blank",
+                               style=self.styles.hyperlink_style),
                         "."])
             ],
         )
@@ -318,15 +318,42 @@ class BiolinkDashApp:
     def get_layout(self):
         return html.Div([
             html.Div([
-                html.Label("Showing Biolink Model version:", style={"margin-right": "5px"}),
-                dcc.Input(id="biolink-version-input", type="text", value=self.biolink_version, debounce=True),
-                html.Button("Submit", id="submit-version", n_clicks=0)
+                # Left side: Title
+                html.Div("Biolink Model Explorer", style={
+                    "fontSize": "18px",
+                    "fontWeight": "bold",
+                    "color": "#333"
+                }),
+                # Right side: Version input and submit button
+                html.Div([
+                    html.Label([
+                        "Showing ",
+                        html.A("Biolink Model",
+                               href=f"https://github.com/biolink/biolink-model/releases/tag/v{self.biolink_version}",
+                               target="_blank", style=self.styles.hyperlink_style),
+                        " version:"
+                    ], style={"marginRight": "5px"}),
+                    dcc.Input(
+                        id="biolink-version-input",
+                        type="text",
+                        value=self.biolink_version,
+                        debounce=False,
+                        style={"width": "100px", "marginRight": "5px"}
+                    ),
+                    html.Button("Submit", id="submit-version", n_clicks=0)
+                ], style={
+                    "display": "flex",
+                    "alignItems": "center"
+                })
             ], style={
                 "display": "flex",
-                "justifyContent": "flex-end",
+                "justifyContent": "space-between",
                 "alignItems": "center",
-                "padding": "10px"
+                "padding": "10px",
+                "borderBottom": "1px solid #ccc"
             }),
+
+            # Main content
             html.Div(id="main-content", children=self.get_main_content())
         ])
 
@@ -382,10 +409,8 @@ class BiolinkDashApp:
         self.all_categories = sorted(set(self.bd.category_dag.nodes()))
         self.all_predicates = sorted(set(self.bd.predicate_dag.nodes()))
 
-# ----------------------------------------------- Style variables -------------------------------------------------- #
-
-    # Callbacks to filter graph elements based on dropdown/other selections
     def register_callbacks(self):
+        # Callbacks to filter graph elements based on dropdown/other selections
 
         @self.app.callback(
             Output("cytoscape-dag-preds", "elements"),

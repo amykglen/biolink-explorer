@@ -17,15 +17,12 @@ class BiolinkDownloader:
 
     def __init__(self, biolink_version: Optional[str] = None):
         self.biolink_version = biolink_version if biolink_version else "master"
-        print(f"biolink version in BD is initially {self.biolink_version}")
-        self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/{self.biolink_version}/biolink-model.yaml"
-        self.biolink_yaml_vurl = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
+        self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
         self.root_category = "NamedThing"
         self.root_predicate = "related_to"
         self.core_nx_properties = {"id", "source", "target"}
         self.biolink_model_raw = self.download_biolink_model()
         self.biolink_version = self.biolink_model_raw["version"]
-        print(f"in bd, after updating bio version, it is {self.biolink_version}")
 
         self.category_dag = self.build_category_dag()
         self.category_dag_dash = self.convert_to_dash_format(self.category_dag)
@@ -39,15 +36,16 @@ class BiolinkDownloader:
             json.dump(self.predicate_dag_dash, predicate_file, indent=2)
 
     def download_biolink_model(self) -> dict:
-        print(f"in bd download, urls are {self.biolink_yaml_url}")
         response = requests.get(self.biolink_yaml_url, timeout=10)
-        if response.status_code != 200:  # Sometimes Biolink's tags start with 'v', so try that
-            response = requests.get(self.biolink_yaml_vurl, timeout=10)
+        # Sometimes Biolink's tags don't start with a 'v' in front of the version, so try that if necessary
+        if response.status_code != 200:
+            secondary_yaml_url = self.biolink_yaml_url.replace("biolink-model/v", "biolink-model/")
+            response = requests.get(secondary_yaml_url, timeout=10)
         if response.status_code == 200:
             return yaml.safe_load(response.text)
         else:
             raise RuntimeError(f"ERROR: Request to get Biolink {self.biolink_version} YAML file returned "
-                               f"{response.status_code} response. Cannot load BiolinkHelper.")
+                               f"{response.status_code} response. Cannot load Biolink Model data.")
 
     def build_category_dag(self) -> nx.DiGraph:
         category_dag = nx.DiGraph()

@@ -13,7 +13,7 @@ class Styles:
         self.chip_grey = "#ececec"
         self.chip_peach = "#FFEBC2"
         self.chip_purple = "#F7DEEA"
-        self.link_blue = "#84cfe8"
+        self.link_blue = "#26a1c9"  # 2c9ab7
         self.regular_opacity = 0.7
         self.mixin_opacity = 0.4
 
@@ -26,6 +26,10 @@ class Styles:
             "border-top": "1px solid #ddd",
             "text-align": "center",
             "color": "black"
+        }
+
+        self.hyperlink_style = {
+            "color": self.link_blue
         }
 
         self.main_styling = [
