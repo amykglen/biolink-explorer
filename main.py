@@ -321,8 +321,7 @@ class BiolinkDashApp:
                 # Left side: Title
                 html.Div("Biolink Model Explorer", style={
                     "fontSize": "18px",
-                    "fontWeight": "bold",
-                    "color": "#333"
+                    "fontWeight": "bold"
                 }),
                 # Right side: Version input and submit button
                 html.Div([
@@ -349,8 +348,7 @@ class BiolinkDashApp:
                 "display": "flex",
                 "justifyContent": "space-between",
                 "alignItems": "center",
-                "padding": "10px",
-                "borderBottom": "1px solid #ccc"
+                "padding": "10px 10px"
             }),
 
             # Main content
