@@ -457,7 +457,7 @@ class BiolinkDashApp:
                                 },
                             ),
                             # Ensure value is string for display
-                            html.Td(str(value), style={"width": "auto"}),
+                            html.Td(str(value), style={"width": "auto", "fontSize": "16px"}),
                         ]
                     )
                 )
@@ -465,14 +465,15 @@ class BiolinkDashApp:
             # Build the title with ID, docs link, and chips
             url = f"https://biolink.github.io/biolink-model/{node_id}"
             title_content = [
-                html.Span(f"{node_id} "),
+                html.Span(f"{node_id} ",
+                          style={"fontSize": "19px"}),
                 html.A(
                     "docs",
                     href=url,
                     target="_blank",
                     style={
                         "color": self.styles.link_blue,
-                        "fontSize": "11px",
+                        "fontSize": "14px",
                         "marginLeft": "3px",
                     },
                 ),
@@ -502,7 +503,7 @@ class BiolinkDashApp:
                         "domain: ",
                         style={
                             "marginRight": "1px",
-                            "fontSize": "11px",
+                            "fontSize": "15px",
                             "color": "grey",
                         },
                     ),
@@ -516,7 +517,7 @@ class BiolinkDashApp:
                         style={
                             "marginLeft": "5px",
                             "marginRight": "1px",
-                            "fontSize": "11px",
+                            "fontSize": "15px",
                             "color": "grey",
                         },
                     ),
@@ -727,7 +728,7 @@ class BiolinkDashApp:
             "borderRadius": "10px" if circular else "3px",
             "backgroundColor": final_color,
             "marginLeft": "8px",
-            "fontSize": "12px",
+            "fontSize": "15px",
             "display": "inline-block",
             "color": "black", # Ensure text visibility
         }
