@@ -1,29 +1,45 @@
-from typing import Set, Optional
+import os
+import sys
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from dash import Dash, dcc, html, Input, Output
 import dash_cytoscape as cyto
+from dash import Dash, Input, Output, dcc, html, State
 
+# Import custom modules/classes
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from biolink_downloader import BiolinkDownloader
 from styles import Styles
 
-# Load additional layouts (including Dagre)
+# Load additional Cytoscape layouts (including Dagre)
 cyto.load_extra_layouts()
 
+
 class BiolinkDashApp:
+    """
+    A Dash application for visualizing and exploring Biolink Model category
+    and predicate hierarchies.
 
-    def __init__(self):
-        self.biolink_version = "master"
-        self.bd = None
-        self.elements_predicates = None
-        self.elements_categories = None
-        self.domains = None
-        self.ranges = None
-        self.all_categories = None
-        self.all_predicates = None
+    Allows users to view relationship graphs, filter by various criteria
+    (mixins, domain/range, search), and view details about selected nodes.
+    It can fetch data for different Biolink Model versions.
+    """
 
-        self.styles = Styles()
+    def __init__(self) -> None:
+        """Initializes the BiolinkDashApp."""
+        self.biolink_version: str = "master"  # Default version
+        self.bd: Optional[BiolinkDownloader] = None
+        self.elements_predicates: Optional[List[Dict[str, Any]]] = None
+        self.elements_categories: Optional[List[Dict[str, Any]]] = None
+        self.domains: Optional[List[str]] = None
+        self.ranges: Optional[List[str]] = None
+        self.all_categories: Optional[List[str]] = None
+        self.all_predicates: Optional[List[str]] = None
+
+        self.styles: Styles = Styles()
+        # Fetch initial data based on the default version
         self.update_biolink_data(self.biolink_version)
-        self.app = Dash(__name__, title="Biolink Explorer")
+
+        self.app: Dash = Dash(__name__, title="Biolink Explorer")
         self.app.layout = self.get_layout()
         self.register_callbacks()
 
