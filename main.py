@@ -480,14 +480,14 @@ class BiolinkDashApp:
                 title_content.append(
                     html.Div(
                         "mixin",
-                        style=self.get_chip_style(self.styles.chip_peach, True),
+                        style=self.get_chip_style(self.styles.chip_peach, circular=True),
                     )
                 )
             if attributes.get("is_symmetric"):
                 title_content.append(
                     html.Div(
                         "symmetric",
-                        style=self.get_chip_style(self.styles.chip_purple, True),
+                        style=self.get_chip_style(self.styles.chip_purple, circular=True),
                     )
                 )
 
@@ -643,35 +643,65 @@ class BiolinkDashApp:
         return relevant_elements
 
     @staticmethod
-    def get_mixin_filter(filter_id: str, show_by_default: Optional[bool] = False) -> any:
-        return html.Div([
+    def get_mixin_filter(filter_id: str, show_by_default: bool = False) -> html.Div:
+        """Creates a 'Show mixins?' checklist component."""
+        return html.Div(
+            [
                 html.Label("Show mixins?"),
                 dcc.Checklist(
                     id=filter_id,
-                    options=[{"label": "", "value": "include"}],  # Empty label to show just the checkbox
+                    options=[{"label": "", "value": "include"}], # Label-less checkbox
                     value=["include"] if show_by_default else [],
-                )
-            ], style={"width": "20%", "display": "inline-block", "padding": "0 1%"})
+                ),
+            ],
+            style={"width": "20%", "display": "inline-block", "padding": "0 1%"},
+        )
 
     @staticmethod
-    def get_search_filter(filter_id: str, node_names: Set[str]) -> any:
+    def get_search_filter(filter_id: str, node_names: List[str]) -> html.Div:
+        """Creates a search dropdown component."""
         item_type = "predicate" if "pred" in filter_id else "category"
-        return html.Div([
-            html.Label(f"Search for {item_type}(s):"),
-            dcc.Dropdown(
-                id=filter_id,
-                options=[{"label": node_name, "value": node_name} for node_name in node_names],
-                multi=True,
-                placeholder=f"Select items... (will filter to their lineages)"
-            )
-        ], style={"width": "30%", "display": "inline-block", "padding": "0 1%"})
+        return html.Div(
+            [
+                html.Label(f"Search for {item_type}(s):"),
+                dcc.Dropdown(
+                    id=filter_id,
+                    options=[{"label": name, "value": name} for name in sorted(node_names)],
+                    multi=True,
+                    placeholder=f"Select items... (filters to lineages)",
+                ),
+            ],
+            style={"width": "30%", "display": "inline-block", "padding": "0 1%"},
+        )
 
-    def get_chip_style(self, color: str, chip_value: Optional[any] = "something", opacity: Optional[float] = None, border: Optional[str] = None) -> dict:
-        if chip_value is None or chip_value == self.bd.root_category:
-            color = self.styles.chip_grey
-        chip_style = {'padding': '2px 5px', 'border-radius': '3px', 'background-color': color,
-                      'margin-left': '8px', 'fontSize': '12px', 'display': 'inline-block'}
-        if opacity:
+    def get_chip_style(
+        self,
+        color: str,
+        chip_value: Optional[Any] = "value_present", # Use a sentinel instead of None directly
+        opacity: Optional[float] = None,
+        border: Optional[str] = None,
+        circular: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generates a style dictionary for visual 'chip' elements.
+        Grey out chip if value is None or the root category.
+        """
+        final_color = color
+        # Use root category from BiolinkDownloader instance if available
+        root_category = self.bd.root_category if self.bd else None
+        if chip_value is None or (root_category and chip_value == root_category):
+            final_color = self.styles.chip_grey
+
+        chip_style: Dict[str, Any] = {
+            "padding": "2px 5px",
+            "borderRadius": "10px" if circular else "3px",
+            "backgroundColor": final_color,
+            "marginLeft": "8px",
+            "fontSize": "12px",
+            "display": "inline-block",
+            "color": "black", # Ensure text visibility
+        }
+        if opacity is not None:
             chip_style["opacity"] = opacity
         if border:
             chip_style["border"] = border
