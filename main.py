@@ -413,61 +413,145 @@ class BiolinkDashApp:
 
     # ----------------------------- Helper Methods ------------------------------ #
 
-    def get_node_info(self, selected_nodes) -> any:
-        """Update the info display area CONTENT based on node selection in a table format with mixin, symmetric, and domain/range chips (using divs)."""
+    def get_node_info(self, selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
+        """
+        Generates the HTML content to display information about a selected node
+        in a table format, including attributes and visual chips.
 
-        if selected_nodes:
-            node_data = selected_nodes[0]
+        Args:
+            selected_nodes: Data provided by Cytoscape for the selected node(s).
+                            Expected to be a list containing a single node's data dict.
 
-            if node_data and "id" in node_data:
-                attributes = node_data.get("attributes", {})
-                node_id = node_data.get('id')
-
-                attributes_to_show = {"description": attributes.get("description", "-"),
-                                      "notes": attributes.get("notes", "-"),
-                                      "aliases": attributes.get("aliases", "-")}
-                table_rows = []
-                for key, value in attributes_to_show.items():
-                    table_rows.append(html.Tr([
-                        html.Td(key, style={'text-align': 'right', 'padding-right': '10px', 'vertical-align': 'top',
-                                            'width': '150px', 'font-family': 'monospace'}),
-                        html.Td(str(value), style={'width': 'auto'})
-                    ]))
-
-                # Craft the title
-                url = f"https://biolink.github.io/biolink-model/{node_id}"
-                title_content = [html.Span(f"{node_id} "),
-                                 html.A("docs", href=url, target="_blank",
-                                        style={"color": self.styles.link_blue, "font-size": "11px", "margin-left": "3px"})]
-                if attributes.get("is_mixin"):
-                    title_content.append(html.Div("mixin", style=self.get_chip_style(self.styles.chip_peach, True)))
-                if attributes.get("is_symmetric"):
-                    title_content.append(html.Div("symmetric", style=self.get_chip_style(self.styles.chip_purple, True)))
-
-                # Indicate domain/range as applicable
-                domain_range_info = []
-                if "domain" in attributes:  # If domain is there, range will be there
-                    domain_range_info.append(html.Span("domain: ", style={'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
-                    domain_range_info.append(html.Div(attributes["domain"] if attributes["domain"] else "-",
-                                                      style=self.get_chip_style(self.styles.chip_green, attributes["domain"])))
-                    domain_range_info.append(html.Span(" → ", style={'margin': '0 5px'}))
-                    domain_range_info.append(html.Span("range: ", style={'marginLeft': '5px', 'marginRight': '1px', 'font-size': '11px', 'color': 'grey'}))
-                    domain_range_info.append(html.Div(attributes["range"] if attributes["range"] else "-",
-                                                      style=self.get_chip_style(self.styles.chip_green, attributes["range"])))
-
-                content = [
-                    html.H4(title_content, style={'margin': '0px 0px 9px 0px'}),
-                    html.Div(domain_range_info,
-                             style={'display': 'flex', 'justify-content': 'center', 'align-items': 'center',
-                                    'margin-bottom': '5px', 'margin-top': '0px'}),
-                    html.Table(table_rows, style={'width': '800px', 'margin': 'auto',
-                                                  'text-align': 'left'})
-                ]
-                return content if domain_range_info else [content[0], content[-1]]
-            else:
-                return "Error: Selected node data is invalid."
-        else:
+        Returns:
+            A list of Dash HTML components or a string message.
+        """
+        if not selected_nodes:
             return "Click on a node to see info"
+
+        node_data = selected_nodes[0]
+
+        if node_data and "id" in node_data:
+            node_id = node_data.get("id")
+            attributes = node_data.get("attributes", {})
+
+            # Attributes to display in the table
+            attributes_to_show = {
+                "description": attributes.get("description", "-"),
+                "notes": attributes.get("notes", "-"),
+                "aliases": attributes.get("aliases", "-"),
+            }
+            table_rows = []
+            for key, value in attributes_to_show.items():
+                table_rows.append(
+                    html.Tr(
+                        [
+                            html.Td(
+                                key,
+                                style={
+                                    "text-align": "right",
+                                    "padding-right": "10px",
+                                    "vertical-align": "top",
+                                    "width": "150px",
+                                    "font-family": "monospace",
+                                },
+                            ),
+                            # Ensure value is string for display
+                            html.Td(str(value), style={"width": "auto"}),
+                        ]
+                    )
+                )
+
+            # Build the title with ID, docs link, and chips
+            url = f"https://biolink.github.io/biolink-model/{node_id}"
+            title_content = [
+                html.Span(f"{node_id} "),
+                html.A(
+                    "docs",
+                    href=url,
+                    target="_blank",
+                    style={
+                        "color": self.styles.link_blue,
+                        "fontSize": "11px",
+                        "marginLeft": "3px",
+                    },
+                ),
+            ]
+            if attributes.get("is_mixin"):
+                title_content.append(
+                    html.Div(
+                        "mixin",
+                        style=self.get_chip_style(self.styles.chip_peach, True),
+                    )
+                )
+            if attributes.get("is_symmetric"):
+                title_content.append(
+                    html.Div(
+                        "symmetric",
+                        style=self.get_chip_style(self.styles.chip_purple, True),
+                    )
+                )
+
+            # Build domain/range info if applicable (only for predicates)
+            domain_range_info = []
+            if "domain" in attributes: # If domain key exists, range key must exist
+                domain = attributes.get("domain")
+                range_val = attributes.get("range") # 'range' is a keyword, use different var name
+                domain_range_info.extend([
+                    html.Span(
+                        "domain: ",
+                        style={
+                            "marginRight": "1px",
+                            "fontSize": "11px",
+                            "color": "grey",
+                        },
+                    ),
+                    html.Div(
+                        domain if domain else "-",
+                        style=self.get_chip_style(self.styles.chip_green, domain),
+                    ),
+                    html.Span(" → ", style={"margin": "0 5px"}),
+                    html.Span(
+                        "range: ",
+                        style={
+                            "marginLeft": "5px",
+                            "marginRight": "1px",
+                            "fontSize": "11px",
+                            "color": "grey",
+                        },
+                    ),
+                    html.Div(
+                        range_val if range_val else "-",
+                        style=self.get_chip_style(self.styles.chip_green, range_val),
+                    ),
+                ])
+
+            # Assemble the final content list
+            content = [
+                html.H4(title_content, style={"margin": "0px 0px 9px 0px"}),
+                html.Div(
+                    domain_range_info,
+                    style={
+                        "display": "flex",
+                        "justifyContent": "center",
+                        "alignItems": "center",
+                        "marginBottom": "5px",
+                        "marginTop": "0px",
+                    },
+                ),
+                html.Table(
+                    table_rows,
+                    style={
+                        "width": "800px",
+                        "margin": "auto",
+                        "textAlign": "left",
+                    },
+                ),
+            ]
+            # Conditionally return content based on whether domain/range info was added
+            return content if domain_range_info else [content[0], content[-1]]
+        else:
+            # Handle cases where selected node data might be invalid
+            return "Error: Selected node data is invalid."
 
     def filter_graph_to_certain_nodes(self, node_ids, relevant_elements) -> list:
         relevant_nodes = [element for element in relevant_elements if
