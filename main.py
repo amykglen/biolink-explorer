@@ -577,43 +577,70 @@ class BiolinkDashApp:
         relevant_elements = relevant_nodes + relevant_edges
         return relevant_elements
 
-    def filter_graph(self, element_set, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded):
-        """Filter edges based on filter selections."""
+    def filter_graph(
+        self,
+        element_set: List[Dict[str, Any]],
+        selected_domains: Optional[List[str]],
+        selected_ranges: Optional[List[str]],
+        include_mixins: List[str],
+        search_nodes: Optional[List[str]],
+        search_nodes_expanded: Set[str],
+    ) -> List[Dict[str, Any]]:
+        """
+        Filters a set of Cytoscape graph elements based on various criteria:
+        mixins, domain/range selections, and search terms.
+
+        Args:
+            element_set: The initial list of Cytoscape elements to filter.
+            selected_domains: List of domain categories selected for filtering (predicates only).
+            selected_ranges: List of range categories selected for filtering (predicates only).
+            include_mixins: List indicating if mixins should be included (e.g., ['include']).
+            search_nodes: List of node IDs directly selected in the search dropdown.
+            search_nodes_expanded: Set of node IDs including search terms and their lineages.
+
+        Returns:
+            The filtered list of Cytoscape elements.
+        """
+        # --- Mixin Filtering ---
         if "include" in include_mixins:
             relevant_elements = element_set
         else:
-            relevant_node_ids = [element["data"]["id"] for element in element_set
-                                 if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]]
+            relevant_node_ids = {element["data"]["id"] for element in element_set
+                                 if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]}
             relevant_elements = self.filter_graph_to_certain_nodes(relevant_node_ids, element_set)
 
-        # First clear all node highlights from previous searches
+        # --- Search Filtering ---
+        # First, clear previous search highlights and apply new ones
         for element in element_set:
-            if "id" in element["data"]:
-                element["classes"] = element["classes"].replace("searched", "").strip()
-                if "searched" in element["classes"]:
-                    print(element["classes"])
-        if search_nodes:
-            # Ensure the nodes the user searched for are highlighted visually
-            for element in element_set:
-                if "id" in element["data"] and element["data"]["id"] in search_nodes:
-                    element["classes"] += " searched"
-            # Then filter down so we only show those nodes and their lineages
-            relevant_node_ids = [element["data"]["id"] for element in relevant_elements
-                                 if "id" in element["data"] and element["data"]["id"] in search_nodes_expanded]
-            relevant_elements = self.filter_graph_to_certain_nodes(relevant_node_ids, element_set)
+            if "id" in element.get("data", {}):
+                # Remove 'searched' class safely
+                current_classes = element.get("classes", "").split()
+                filtered_classes = [c for c in current_classes if c != "searched"]
+                element["classes"] = " ".join(filtered_classes)
 
-        if not selected_domains and not selected_ranges:
-            return relevant_elements  # Show all elements if no filters applied
+                # Add 'searched' class if this node was directly searched
+                if search_nodes and element["data"]["id"] in search_nodes:
+                    element["classes"] = (element["classes"] + " searched").strip()
 
-        selected_domains_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_domains)
-        selected_ranges_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_ranges)
+        # If search terms are active, filter down to the expanded lineage
+        if search_nodes_expanded:
+            relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
 
-        filtered_node_ids = [node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
-                             (not selected_domains or not node["data"]["attributes"].get("domain") or node["data"]["attributes"]["domain"] in selected_domains_set) and
-                             (not selected_ranges or not node["data"]["attributes"].get("range") or node["data"]["attributes"]["range"] in selected_ranges_set)]
-        filtered_elements = self.filter_graph_to_certain_nodes(filtered_node_ids, relevant_elements)
+        # --- Domain/Range Filtering (for Predicates) ---
+        if selected_domains or selected_ranges:
+            # Get ancestors for selected domains/ranges for hierarchical filtering
+            selected_domains_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_domains)
+            selected_ranges_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_ranges)
 
-        return filtered_elements
+            # Filter nodes (predicates) based on domain/range matching
+            filtered_node_ids = {node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
+                                 (not selected_domains or not node["data"]["attributes"].get("domain") or
+                                  node["data"]["attributes"]["domain"] in selected_domains_set) and
+                                 (not selected_ranges or not node["data"]["attributes"].get("range") or
+                                  node["data"]["attributes"]["range"] in selected_ranges_set)}
+            relevant_elements = self.filter_graph_to_certain_nodes(filtered_node_ids, relevant_elements)
+
+        return relevant_elements
 
     @staticmethod
     def get_mixin_filter(filter_id: str, show_by_default: Optional[bool] = False) -> any:
