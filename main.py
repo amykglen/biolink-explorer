@@ -3,6 +3,7 @@ import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import dash_cytoscape as cyto
+import networkx as nx
 from dash import Dash, Input, Output, dcc, html, State
 
 # Import custom modules/classes
@@ -577,6 +578,30 @@ class BiolinkDashApp:
         relevant_elements = relevant_nodes + relevant_edges
         return relevant_elements
 
+    def remove_mixins(self, element_set: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filters a list of Cytoscape elements to remove all mixin nodes
+        and any edges connected only to mixins or between a mixin and non-mixin.
+
+        Args:
+            element_set: The list of Cytoscape elements (nodes and edges).
+
+        Returns:
+            A new list of Cytoscape elements containing only non-mixin nodes
+            and the edges strictly connecting *between* those non-mixin nodes.
+        """
+        # Identify the IDs of all nodes that are *not* mixins.
+        non_mixin_node_ids: Set[str] = {
+            element["data"]["id"]
+            for element in element_set
+            # Check it's a node ('id' key exists in data dict)
+            if "id" in element.get("data", {})
+               and not element["data"].get("attributes", {}).get("is_mixin", False)
+        }
+        filtered_elements = self.filter_graph_to_certain_nodes(non_mixin_node_ids, element_set)
+
+        return filtered_elements
+
     def filter_graph(
         self,
         element_set: List[Dict[str, Any]],
@@ -584,7 +609,7 @@ class BiolinkDashApp:
         selected_ranges: Optional[List[str]],
         include_mixins: List[str],
         search_nodes: Optional[List[str]],
-        search_nodes_expanded: Set[str],
+        nx_dag: nx.DiGraph,
     ) -> List[Dict[str, Any]]:
         """
         Filters a set of Cytoscape graph elements based on various criteria:
@@ -596,7 +621,7 @@ class BiolinkDashApp:
             selected_ranges: List of range categories selected for filtering (predicates only).
             include_mixins: List indicating if mixins should be included (e.g., ['include']).
             search_nodes: List of node IDs directly selected in the search dropdown.
-            search_nodes_expanded: Set of node IDs including search terms and their lineages.
+            nx_dag: The relevant NetworkX directed graph (either for categories or predicates).
 
         Returns:
             The filtered list of Cytoscape elements.
@@ -605,9 +630,7 @@ class BiolinkDashApp:
         if "include" in include_mixins:
             relevant_elements = element_set
         else:
-            relevant_node_ids = {element["data"]["id"] for element in element_set
-                                 if "id" in element["data"] and not element["data"].get("attributes", {})["is_mixin"]}
-            relevant_elements = self.filter_graph_to_certain_nodes(relevant_node_ids, element_set)
+            relevant_elements = self.remove_mixins(element_set)
 
         # --- Search Filtering ---
         # First, clear previous search highlights and apply new ones
@@ -623,7 +646,12 @@ class BiolinkDashApp:
                     element["classes"] = (element["classes"] + " searched").strip()
 
         # If search terms are active, filter down to the expanded lineage
-        if search_nodes_expanded:
+        if search_nodes:
+            # Calculate the full lineage (ancestors + descendants) for search terms
+            ancestors = self.bd.get_ancestors_nx(nx_dag, search_nodes)
+            descendants = self.bd.get_descendants_nx(nx_dag, search_nodes)
+            search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
+
             relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
 
         # --- Domain/Range Filtering (for Predicates) ---
@@ -639,6 +667,10 @@ class BiolinkDashApp:
                                  (not selected_ranges or not node["data"]["attributes"].get("range") or
                                   node["data"]["attributes"]["range"] in selected_ranges_set)}
             relevant_elements = self.filter_graph_to_certain_nodes(filtered_node_ids, relevant_elements)
+
+        # --- Final Mixin Filtering, to handle any ancestors/descendants added ---
+        if not include_mixins:
+            relevant_elements = self.remove_mixins(relevant_elements)
 
         return relevant_elements
 
@@ -687,9 +719,7 @@ class BiolinkDashApp:
         Grey out chip if value is None or the root category.
         """
         final_color = color
-        # Use root category from BiolinkDownloader instance if available
-        root_category = self.bd.root_category if self.bd else None
-        if chip_value is None or (root_category and chip_value == root_category):
+        if chip_value is None or chip_value == self.bd.root_category:
             final_color = self.styles.chip_grey
 
         chip_style: Dict[str, Any] = {
@@ -720,17 +750,25 @@ class BiolinkDashApp:
             Input("include-mixins-preds", "value"),
             Input("node-search-preds", "value")
         )
-        def filter_graph_predicates(selected_domains, selected_ranges, include_mixins, search_nodes):
+        def filter_graph_predicates(
+            selected_domains: Optional[List[str]],
+            selected_ranges: Optional[List[str]],
+            include_mixins: List[str],
+            search_nodes: Optional[List[str]],
+        ) -> Tuple[List[Dict[str, Any]], List[str]]:
+            """Filters predicate graph based on domain, range, mixins, and search."""
+            include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
-                # Override the include mixins filter as necessary!
+                # If a mixin was searched, force 'include mixins' checkbox
                 if any(self.bd.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
-                    include_mixins = ["include"]
-                ancestors = self.bd.get_ancestors_nx(self.bd.predicate_dag, search_nodes)
-                descendants = self.bd.get_descendants_nx(self.bd.predicate_dag, search_nodes)
-                search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
-            else:
-                search_nodes_expanded = set()
-            return self.filter_graph(self.elements_predicates, selected_domains, selected_ranges, include_mixins, search_nodes, search_nodes_expanded), include_mixins
+                    include_mixins_updated = ["include"]
+
+            return self.filter_graph(self.elements_predicates,
+                                     selected_domains,
+                                     selected_ranges,
+                                     include_mixins_updated,
+                                     search_nodes,
+                                     self.bd.predicate_dag), include_mixins_updated
 
         @self.app.callback(
             Output("cytoscape-dag-cats", "elements"),
@@ -738,17 +776,23 @@ class BiolinkDashApp:
             Input("include-mixins-cats", "value"),
             Input("node-search-cats", "value")
         )
-        def filter_graph_categories(include_mixins, search_nodes):
+        def filter_graph_categories(
+            include_mixins: List[str],
+            search_nodes: Optional[List[str]],
+        ) -> Tuple[List[Dict[str, Any]], List[str]]:
+            """Filters category graph based on mixins and search."""
+            include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
-                # Override the include mixins filter as necessary!
+                # If a mixin was searched, force 'include mixins' checkbox
                 if any(self.bd.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
-                    include_mixins = ["include"]
-                ancestors = self.bd.get_ancestors_nx(self.bd.category_dag, search_nodes)
-                descendants = self.bd.get_descendants_nx(self.bd.category_dag, search_nodes)
-                search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
-            else:
-                search_nodes_expanded = set()
-            return self.filter_graph(self.elements_categories, [], [], include_mixins, search_nodes, search_nodes_expanded), include_mixins
+                    include_mixins_updated = ["include"]
+
+            return self.filter_graph(self.elements_categories,
+                                     [],
+                                     [],
+                                     include_mixins_updated,
+                                     search_nodes,
+                                     self.bd.category_dag), include_mixins_updated
 
         # Callbacks to display node info in the bottom area when a node is clicked
 
