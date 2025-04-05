@@ -73,15 +73,15 @@ class BiolinkDashApp:
 
     # -------------------------- Layout Generation Methods -------------------------- #
 
-    def get_layout(self):
+    def get_layout(self) -> html.Div:
+        """Generates the main layout Div for the Dash application."""
         return html.Div([
+            # Header section with title and version selector
             html.Div([
-                # Left side: Title
                 html.Div("Biolink Model Explorer", style={
                     "fontSize": "18px",
                     "fontWeight": "bold"
                 }),
-                # Right side: Version input and submit button
                 html.Div([
                     html.Label([
                         "Showing ",
@@ -106,10 +106,10 @@ class BiolinkDashApp:
                 "display": "flex",
                 "justifyContent": "space-between",
                 "alignItems": "center",
-                "padding": "10px 10px"
+                "padding": "10px 10px",
+                "borderBottom": "1px solid #ddd"
             }),
-
-            # Main content
+            # Main content area, updated by callback
             html.Div(id="main-content", children=self.get_main_content())
         ])
 
