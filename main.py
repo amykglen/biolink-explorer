@@ -113,21 +113,30 @@ class BiolinkDashApp:
             html.Div(id="main-content", children=self.get_main_content())
         ])
 
-    def get_main_content(self):
+    def get_main_content(self) -> html.Div:
+        """Generates the main content area including tabs and graphs."""
+        tab_content_style = {
+            "display": "flex",
+            "flexDirection": "column",
+            # Adjust height based on header and tabs
+            "height": "calc(100vh - 110px)",
+        }
+        cytoscape_style = {"width": "100%", "height": "100%"}
+
         return html.Div(
             id="app-container",
             children=[
                 dcc.Tabs([
                     dcc.Tab(label="Categories", children=[
                         html.Div(
-                            style={"display": "flex", "flex-direction": "column", "height": "calc(100vh - 100px)"}, # Adjust 50px for tabs height
+                            style=tab_content_style,
                             children=[
                                 self.get_filter_divs_cats(),
                                 cyto.Cytoscape(
                                     id="cytoscape-dag-cats",
                                     elements=self.elements_categories,
                                     layout=self.styles.layout_settings,
-                                    style={"width": "100%", "height": "100%"}, # Set height to 100% of parent
+                                    style=cytoscape_style,
                                     stylesheet=self.styles.main_styling
                                 ),
                                 html.Div(id="node-info-cats", style=self.styles.node_info_div_style)
@@ -135,14 +144,14 @@ class BiolinkDashApp:
                     ]),
                     dcc.Tab(label="Predicates", children=[
                         html.Div(
-                            style={"display": "flex", "flex-direction": "column", "height": "calc(100vh - 100px)"}, # Adjust 50px for tabs height
+                            style=tab_content_style,
                             children=[
                                 self.get_filter_divs_preds(),
                                 cyto.Cytoscape(
                                     id="cytoscape-dag-preds",
                                     elements=self.elements_predicates,
                                     layout=self.styles.layout_settings,
-                                    style={"width": "100%", "height": "100%"}, # Set height to 100% of parent
+                                    style=cytoscape_style,
                                     stylesheet=self.styles.main_styling
                                 ),
                                 html.Div(id="node-info-preds", style=self.styles.node_info_div_style)
