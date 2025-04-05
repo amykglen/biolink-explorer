@@ -794,38 +794,54 @@ class BiolinkDashApp:
                                      search_nodes,
                                      self.bd.category_dag), include_mixins_updated
 
-        # Callbacks to display node info in the bottom area when a node is clicked
-
+        # Callback to display node info (Categories Tab)
         @self.app.callback(
             Output("node-info-cats", "children"),
             Input("cytoscape-dag-cats", "selectedNodeData"),
         )
-        def display_node_info_categories(selected_nodes):
+        def display_node_info_categories(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
+            """Displays information for the selected category node."""
             return self.get_node_info(selected_nodes)
 
+        # Callback to display node info (Predicates Tab)
         @self.app.callback(
             Output("node-info-preds", "children"),
             Input("cytoscape-dag-preds", "selectedNodeData"),
         )
-        def display_node_info_predicates(selected_nodes):
+        def display_node_info_predicates(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
+            """Displays information for the selected predicate node."""
             return self.get_node_info(selected_nodes)
 
+        # Callback to update the entire main content when version changes
         @self.app.callback(
             Output("main-content", "children"),
-            Input("biolink-version-input", "value"),
-            prevent_initial_call=True
+            Input("submit-version", "n_clicks"), # Triggered by button click
+            Input("biolink-version-input", "n_submit"),  # Triggered with Enter key
+            State("biolink-version-input", "value"), # Get the value from input field
+            prevent_initial_call=True, # Don't run on app startup
         )
-        def update_content(version):
-            self.update_biolink_data(version)
+        def update_content_on_version_submit(button_clicks: Optional[int],
+                                             enter_presses: Optional[int],
+                                             version: str) -> html.Div:
+            """
+            Updates Biolink data based on the submitted version (via button
+            or Enter key) and redraws the main content area.
+            """
+            if version and version != self.biolink_version:
+                 self.update_biolink_data(version)
+            # Regenerate the layout with potentially new data/version
             return self.get_main_content()
 
     # ------------------------------ App Runner ------------------------------- #
 
-    def run(self, **kwargs):
+    def run(self, **kwargs: Any) -> None:
+        """Starts the Dash development server."""
         self.app.run(**kwargs)
 
 
 # Main execution block
 if __name__ == "__main__":
-    app = BiolinkDashApp()
-    app.run(debug=True)
+    biolink_app = BiolinkDashApp()
+    # Set debug=True for development (auto-reloading, error messages)
+    # Set debug=False for production
+    biolink_app.run(debug=True)
