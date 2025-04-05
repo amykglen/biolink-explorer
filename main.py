@@ -287,7 +287,7 @@ class BiolinkDashApp:
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
-                            " about that item in the area below the graph.",
+                            " about that item in the area below the graph. Scroll over the graph to zoom in or out.",
                         ]
                     ),
                     html.H5("Legend:"),
