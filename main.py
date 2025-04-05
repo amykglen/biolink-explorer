@@ -553,10 +553,24 @@ class BiolinkDashApp:
             # Handle cases where selected node data might be invalid
             return "Error: Selected node data is invalid."
 
-    def filter_graph_to_certain_nodes(self, node_ids, relevant_elements) -> list:
+    @staticmethod
+    def filter_graph_to_certain_nodes(node_ids: Set[str], relevant_elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filters a list of Cytoscape elements to include only nodes from a
+        given set of IDs and the edges connecting them.
+
+        Args:
+            node_ids: A set of node IDs to keep.
+            relevant_elements: The full list of Cytoscape elements (nodes and edges).
+
+        Returns:
+            A filtered list of Cytoscape elements.
+        """
+        # Filter nodes based on the provided node_ids set
         relevant_nodes = [element for element in relevant_elements if
                           "id" in element["data"] and element["data"]["id"] in node_ids]
         relevant_node_ids = [element["data"]["id"] for element in relevant_nodes]
+        # Filter edges: keep only those where both source and target are in relevant_node_ids
         relevant_edges = [element for element in relevant_elements if "source" in element["data"] and
                           element["data"]["source"] in relevant_node_ids and
                           element["data"]["target"] in relevant_node_ids]
