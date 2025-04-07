@@ -248,7 +248,7 @@ class BiolinkDashApp:
                             "categories (i.e. node types) and predicates (i.e., edge types) within the ",
                             html.A(
                                 "Biolink Model",
-                                href="https://github.com/biolink/biolink-model",
+                                href="https://doi.org/10.1111/cts.13302",
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
@@ -427,7 +427,7 @@ class BiolinkDashApp:
             A list of Dash HTML components or a string message.
         """
         if not selected_nodes:
-            return "Click on a node to see info"
+            return "Click on a node to see details."
 
         node_data = selected_nodes[0]
 
