@@ -2,6 +2,7 @@
 Helper module based off of https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/biolink_helper.py.
 """
 import json
+import logging
 import os
 from typing import Optional, List, Tuple, Union, Set
 
@@ -12,17 +13,25 @@ from networkx.readwrite import json_graph
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s: %(message)s',
+                    handlers=[logging.StreamHandler()])
+
 
 class BiolinkDownloader:
 
     def __init__(self, biolink_version: Optional[str] = None):
-        self.biolink_version = biolink_version if biolink_version else "master"
+        self.biolink_tags = self.get_biolink_repo_tags()
+        self.latest_tag = self.biolink_tags[0]
+        self.biolink_version = self.latest_tag.strip("v") if biolink_version == "master" else biolink_version
         self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
+        self.biolink_local_path = f"{SCRIPT_DIR}/biolink_model_{self.biolink_version}.json"
         self.root_category = "NamedThing"
         self.root_predicate = "related_to"
         self.core_nx_properties = {"id", "source", "target"}
+        logging.info(f"Biolink version is {self.biolink_version}, latest tag is {self.latest_tag}")
+        logging.info(f"Biolink local path is {self.biolink_local_path}")
         self.biolink_model_raw = self.download_biolink_model()
-        self.biolink_version = self.biolink_model_raw["version"]
 
         self.category_dag = self.build_category_dag()
         self.category_dag_dash = self.convert_to_dash_format(self.category_dag)
@@ -36,18 +45,31 @@ class BiolinkDownloader:
             json.dump(self.predicate_dag_dash, predicate_file, indent=2)
 
     def download_biolink_model(self) -> dict:
-        response = requests.get(self.biolink_yaml_url, timeout=10)
-        # Sometimes Biolink's tags don't start with a 'v' in front of the version, so try that if necessary
-        if response.status_code != 200:
-            secondary_yaml_url = self.biolink_yaml_url.replace("biolink-model/v", "biolink-model/")
-            response = requests.get(secondary_yaml_url, timeout=10)
-        if response.status_code == 200:
-            return yaml.safe_load(response.text)
+        if os.path.exists(self.biolink_local_path):
+            # Load the cached Biolink Model file
+            logging.info(f"Loading cached Biolink file ({self.biolink_local_path})")
+            with open(self.biolink_local_path, "r") as biolink_json_file:
+                return json.load(biolink_json_file)
         else:
-            raise RuntimeError(f"ERROR: Request to get Biolink {self.biolink_version} YAML file returned "
-                               f"{response.status_code} response. Cannot load Biolink Model data.")
+            # Otherwise grab the Biolink Model yaml from GitHub
+            logging.info(f"Grabbing Biolink Model YAML from GitHub")
+            response = requests.get(self.biolink_yaml_url, timeout=10)
+            # Sometimes Biolink's tags don't start with a 'v' in front of the version, so try that if necessary
+            if response.status_code != 200:
+                secondary_yaml_url = self.biolink_yaml_url.replace("biolink-model/v", "biolink-model/")
+                response = requests.get(secondary_yaml_url, timeout=10)
+            if response.status_code == 200:
+                biolink_dict = yaml.safe_load(response.text)
+                with open(self.biolink_local_path, "w+") as biolink_json_file:
+                    json.dump(biolink_dict, biolink_json_file, indent=2)
+                return biolink_dict
+            else:
+                logging.error(f"ERROR: Request to get Biolink {self.biolink_version} YAML file returned "
+                                   f"{response.status_code} response. Cannot load Biolink Model data.")
+                return dict()
 
     def build_category_dag(self) -> nx.DiGraph:
+        logging.info(f"Building category graph..")
         category_dag = nx.DiGraph()
 
         for class_name_english, info in self.biolink_model_raw["classes"].items():
@@ -77,7 +99,7 @@ class BiolinkDownloader:
 
         # Last, filter out things that are not categories (Biolink 'classes' includes other things too..)
         non_category_node_ids = [node_id for node_id, data in category_dag.nodes(data=True)
-                                 if not (self.root_category in self.get_ancestors_nx(category_dag, node_id)
+                                 if not (self.root_category in self.get_ancestors(category_dag, node_id)
                                          or data.get("is_mixin"))]
         for non_category_node_id in non_category_node_ids:
             category_dag.remove_node(non_category_node_id)
@@ -88,6 +110,7 @@ class BiolinkDownloader:
         return category_dag
 
     def build_predicate_dag(self) -> nx.DiGraph:
+        logging.info(f"Building predicate graph..")
         predicate_dag = nx.DiGraph()
 
         # NOTE: 'slots' includes some things that aren't predicates, but we don't care; doesn't hurt to include them
@@ -127,7 +150,7 @@ class BiolinkDownloader:
 
         # Last, filter out things that are not predicates (Biolink 'slots' includes other things too..)
         non_predicate_node_ids = [node_id for node_id, data in predicate_dag.nodes(data=True)
-                                  if not (self.root_predicate in self.get_ancestors_nx(predicate_dag, node_id)
+                                  if not (self.root_predicate in self.get_ancestors(predicate_dag, node_id)
                                           or data.get("is_mixin"))]
         for non_predicate_node_id in non_predicate_node_ids:
             predicate_dag.remove_node(non_predicate_node_id)
@@ -181,13 +204,13 @@ class BiolinkDownloader:
         if not nx_graph.has_node(node_id):
             nx_graph.add_node(node_id)
 
-    def get_ancestors_nx(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
+    def get_ancestors(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
         node_ids = self.convert_to_set(node_ids)
         all_ancestors = [set(nx.ancestors(nx_graph, node_id)) for node_id in node_ids]
         unique_ancestors = node_ids.union(*all_ancestors)
         return unique_ancestors
 
-    def get_descendants_nx(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
+    def get_descendants(self, nx_graph: nx.DiGraph, node_ids: Union[str, set, list]) -> Set[str]:
         node_ids = self.convert_to_set(node_ids)
         all_descendants = [set(nx.descendants(nx_graph, node_id)) for node_id in node_ids]
         unique_descendants = node_ids.union(*all_descendants)
@@ -203,6 +226,19 @@ class BiolinkDownloader:
             return {item}
         else:
             return set()
+
+    @staticmethod
+    def get_biolink_repo_tags() -> List[str]:
+        url = f"https://api.github.com/repos/biolink/biolink-model/tags"
+        response = requests.get(url)
+        if response.status_code != 200:
+            raise Exception(f"Failed to fetch tags: {response.status_code} - {response.text}")
+
+        tags = response.json()
+        tag_names = [item["name"] for item in tags]
+
+        return tag_names
+
 
 def main():
     downloader = BiolinkDownloader()

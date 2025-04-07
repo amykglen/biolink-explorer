@@ -649,8 +649,8 @@ class BiolinkDashApp:
         # If search terms are active, filter down to the expanded lineage
         if search_nodes:
             # Calculate the full lineage (ancestors + descendants) for search terms
-            ancestors = self.bd.get_ancestors_nx(nx_dag, search_nodes)
-            descendants = self.bd.get_descendants_nx(nx_dag, search_nodes)
+            ancestors = self.bd.get_ancestors(nx_dag, search_nodes)
+            descendants = self.bd.get_descendants(nx_dag, search_nodes)
             search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
 
             relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
@@ -658,8 +658,8 @@ class BiolinkDashApp:
         # --- Domain/Range Filtering (for Predicates) ---
         if selected_domains or selected_ranges:
             # Get ancestors for selected domains/ranges for hierarchical filtering
-            selected_domains_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_domains)
-            selected_ranges_set = self.bd.get_ancestors_nx(self.bd.category_dag, selected_ranges)
+            selected_domains_set = self.bd.get_ancestors(self.bd.category_dag, selected_domains)
+            selected_ranges_set = self.bd.get_ancestors(self.bd.category_dag, selected_ranges)
 
             # Filter nodes (predicates) based on domain/range matching
             filtered_node_ids = {node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
