@@ -849,12 +849,11 @@ class BiolinkDashApp:
         self.app.run(**kwargs)
 
 
-# Main execution block
+biolink_app = BiolinkDashApp()
+
+# Heroku uses this
+server_app = biolink_app.app.server
+
+# Local run
 if __name__ == "__main__":
-    biolink_app = BiolinkDashApp()
-    # Set debug=True for development (auto-reloading, error messages)
-    # Set debug=False for production
-    biolink_app.run(debug=False)
-
-
-server_app = BiolinkDashApp().app.server
+    biolink_app.run(debug=True)
