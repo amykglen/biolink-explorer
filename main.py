@@ -84,9 +84,7 @@ class BiolinkDashApp:
                 html.Div([
                     html.Label([
                         "Showing ",
-                        html.A("Biolink Model",
-                               href=f"https://github.com/biolink/biolink-model/releases/tag/v{self.bd.biolink_version}",
-                               target="_blank", style=self.styles.hyperlink_style),
+                        html.Div(id="biolink-version-link", style={"display": "inline-block"}),
                         " version:"
                     ], style={"marginRight": "5px"}),
                     dcc.Dropdown(
@@ -826,6 +824,21 @@ class BiolinkDashApp:
                  self.update_biolink_data(version)
             # Regenerate the layout with potentially new data/version
             return self.get_main_content()
+
+        @self.app.callback(
+            Output("biolink-version-link", "children"),
+            Input("biolink-version-input", "value")
+        )
+        def update_biolink_anchor(version_tag: str) -> html.A:
+            if version_tag:
+                return html.A(
+                    "Biolink Model",
+                    href=f"https://github.com/biolink/biolink-model/releases/tag/{version_tag}",
+                    target="_blank",
+                    style=self.styles.hyperlink_style
+                )
+            else:
+                return html.A()
 
     # ------------------------------ App Runner ------------------------------- #
 
