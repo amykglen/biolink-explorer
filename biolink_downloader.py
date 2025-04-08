@@ -4,6 +4,7 @@ Helper module based off of https://github.com/RTXteam/RTX/blob/master/code/ARAX/
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Optional, List, Tuple, Union, Set
 
 import networkx as nx
@@ -21,16 +22,15 @@ logging.basicConfig(level=logging.DEBUG,
 class BiolinkDownloader:
 
     def __init__(self, biolink_version: Optional[str] = None):
-        self.biolink_tags = self.get_biolink_repo_tags()
+        self.biolink_tags = self.get_biolink_github_tags()
         self.latest_tag = self.biolink_tags[0]
-        self.biolink_version = self.latest_tag.strip("v") if biolink_version == "master" else biolink_version
+        self.biolink_version = biolink_version if biolink_version else self.latest_tag.lstrip("v")
         self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
         self.biolink_local_path = f"{SCRIPT_DIR}/biolink_model_{self.biolink_version}.json"
         self.root_category = "NamedThing"
         self.root_predicate = "related_to"
         self.core_nx_properties = {"id", "source", "target"}
-        logging.info(f"Biolink version is {self.biolink_version}, latest tag is {self.latest_tag}")
-        logging.info(f"Biolink local path is {self.biolink_local_path}")
+        logging.info(f"Biolink version to use is {self.biolink_version}, latest tag is {self.latest_tag}")
         self.biolink_model_raw = self.download_biolink_model()
 
         self.category_dag = self.build_category_dag()
@@ -38,11 +38,7 @@ class BiolinkDownloader:
         self.predicate_dag = self.build_predicate_dag()
         self.predicate_dag_dash = self.convert_to_dash_format(self.predicate_dag)
 
-        with open(f"{SCRIPT_DIR}/category_dag_dash.json", "w+") as category_file:
-            json.dump(self.category_dag_dash, category_file, indent=2)
-
-        with open(f"{SCRIPT_DIR}/predicate_dag_dash.json", "w+") as predicate_file:
-            json.dump(self.predicate_dag_dash, predicate_file, indent=2)
+        logging.info(f"Done loading BiolinkDownloader.")
 
     def download_biolink_model(self) -> dict:
         if os.path.exists(self.biolink_local_path):
@@ -228,14 +224,37 @@ class BiolinkDownloader:
             return set()
 
     @staticmethod
-    def get_biolink_repo_tags() -> List[str]:
-        url = f"https://api.github.com/repos/biolink/biolink-model/tags"
-        response = requests.get(url)
-        if response.status_code != 200:
-            raise Exception(f"Failed to fetch tags: {response.status_code} - {response.text}")
+    def get_biolink_github_tags():
+        tags_cache_path = f"{SCRIPT_DIR}/tags_cache.json"
+        no_cache_exists = not os.path.exists(tags_cache_path)
+        now = datetime.now()
+        if no_cache_exists or (now - datetime.fromtimestamp(os.path.getmtime(tags_cache_path)) >= timedelta(minutes=5)):
+            # Our cache is stale, so we'll update it
+            logging.info(f"Updating github tags cache..")
+            tags = []
+            page = 1
+            per_page = 100  # GitHub's max per page
+            while True:
+                url = f"https://api.github.com/repos/biolink/biolink-model/tags?page={page}&per_page={per_page}"
+                response = requests.get(url)
+                if response.status_code != 200:
+                    raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
+                page_tags = response.json()
+                if not page_tags:
+                    break
+                tags.extend(page_tags)
+                page += 1
 
-        tags = response.json()
-        tag_names = [item["name"] for item in tags]
+            # Save the updated tags to our cache
+            tag_names = [tag["name"] for tag in tags]
+            with open(tags_cache_path, "w+") as tags_cache_file:
+                json.dump(tag_names, tags_cache_file, indent=2)
+
+            return tag_names
+        else:
+            logging.info(f"Loading cached GitHub tags..")
+            with open(tags_cache_path, "r") as tags_cache_file:
+                tag_names = json.load(tags_cache_file)
 
         return tag_names
 

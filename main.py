@@ -27,7 +27,6 @@ class BiolinkDashApp:
 
     def __init__(self) -> None:
         """Initializes the BiolinkDashApp."""
-        self.biolink_version: str = "master"  # Default version
         self.bd: Optional[BiolinkDownloader] = None
         self.elements_predicates: Optional[List[Dict[str, Any]]] = None
         self.elements_categories: Optional[List[Dict[str, Any]]] = None
@@ -38,7 +37,7 @@ class BiolinkDashApp:
 
         self.styles: Styles = Styles()
         # Fetch initial data based on the default version
-        self.update_biolink_data(self.biolink_version)
+        self.update_biolink_data()
 
         self.app: Dash = Dash(__name__, title="Biolink Explorer")
         self.app.layout = self.get_layout()
@@ -46,14 +45,13 @@ class BiolinkDashApp:
 
     # ------------------------- Data Loading and Update ------------------------- #
 
-    def update_biolink_data(self, version: str) -> None:
+    def update_biolink_data(self, version: Optional[str] = None) -> None:
         """
         Fetches and processes Biolink data for the specified version using
         BiolinkDownloader. Updates instance variables holding graph elements
         and filter options.
         """
         self.bd = BiolinkDownloader(biolink_version=version)
-        self.biolink_version = self.bd.biolink_version # Store the actual resolved version
         self.elements_predicates = self.bd.predicate_dag_dash
         self.elements_categories = self.bd.category_dag_dash
 
@@ -87,18 +85,17 @@ class BiolinkDashApp:
                     html.Label([
                         "Showing ",
                         html.A("Biolink Model",
-                               href=f"https://github.com/biolink/biolink-model/releases/tag/v{self.biolink_version}",
+                               href=f"https://github.com/biolink/biolink-model/releases/tag/v{self.bd.biolink_version}",
                                target="_blank", style=self.styles.hyperlink_style),
                         " version:"
                     ], style={"marginRight": "5px"}),
-                    dcc.Input(
+                    dcc.Dropdown(
                         id="biolink-version-input",
-                        type="text",
-                        value=self.biolink_version,
-                        debounce=False,
-                        style={"width": "100px", "marginRight": "5px"}
+                        options=[{"label": tag, "value": tag} for tag in self.bd.biolink_tags],
+                        value=self.bd.latest_tag,
+                        clearable=False,
+                        style={"width": "120px", "marginRight": "5px"}
                     ),
-                    html.Button("Submit", id="submit-version", n_clicks=0)
                 ], style={
                     "display": "flex",
                     "alignItems": "center"
@@ -644,7 +641,7 @@ class BiolinkDashApp:
 
                 # Add 'searched' class if this node was directly searched
                 if search_nodes and element["data"]["id"] in search_nodes:
-                    element["classes"] = (element["classes"] + " searched").strip()
+                    element["classes"] = (element["classes"] + " searched").lstrip()
 
         # If search terms are active, filter down to the expanded lineage
         if search_nodes:
@@ -816,19 +813,16 @@ class BiolinkDashApp:
         # Callback to update the entire main content when version changes
         @self.app.callback(
             Output("main-content", "children"),
-            Input("submit-version", "n_clicks"), # Triggered by button click
-            Input("biolink-version-input", "n_submit"),  # Triggered with Enter key
-            State("biolink-version-input", "value"), # Get the value from input field
+            Input("biolink-version-input", "value"),
             prevent_initial_call=True, # Don't run on app startup
         )
-        def update_content_on_version_submit(button_clicks: Optional[int],
-                                             enter_presses: Optional[int],
-                                             version: str) -> html.Div:
+        def update_content_on_version_submit(version_tag: str) -> html.Div:
             """
             Updates Biolink data based on the submitted version (via button
             or Enter key) and redraws the main content area.
             """
-            if version and version != self.biolink_version:
+            version = version_tag.strip("v")
+            if version and version != self.bd.biolink_version:
                  self.update_biolink_data(version)
             # Regenerate the layout with potentially new data/version
             return self.get_main_content()
