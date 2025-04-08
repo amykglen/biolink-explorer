@@ -857,4 +857,4 @@ if __name__ == "__main__":
     biolink_app.run(debug=False)
 
 
-server_app = BiolinkDashApp().app
+server_app = BiolinkDashApp().app.server
