@@ -140,7 +140,7 @@ class BiolinkManager:
 
             # Only record this if it's a canonical predicate
             # NOTE: I think only predicates that have two forms are labeled as 'canonical'; single-form are not
-            labeled_as_canonical = info.get("annotations", dict()).get("canonical_predicate")
+            labeled_as_canonical = self.determine_if_labeled_canonical(info)
             has_inverse_specified = info.get("inverse")
             if labeled_as_canonical or not has_inverse_specified:
                 self.add_node_if_doesnt_exist(predicate_dag, slot_name)
@@ -247,6 +247,18 @@ class BiolinkManager:
             return {item}
         else:
             return set()
+
+    @staticmethod
+    def determine_if_labeled_canonical(node_info: dict) -> bool:
+        annotations = node_info.get("annotations")
+        if isinstance(annotations, dict):
+            if "canonical_predicate" in annotations:
+                return True
+        elif isinstance(annotations, list):  # Appears in some older Biolink versions (e.g., 2.2.1)
+            if any(item for item in annotations
+                   if item.get("value") and (item.get("tag") == "biolink:canonical_predicate" or item.get("tag") == "canonical_predicate")):
+                return True
+        return False
 
     @staticmethod
     def get_biolink_github_tags():
