@@ -267,7 +267,8 @@ class BiolinkDashApp:
                     ),
                     html.P(
                         """
-                        The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model.
+                        The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model 
+                        (non-canonical predicates are excluded).
                         Use the filters at the top to focus on specific predicates, include/exclude mixin predicates,
                         and to filter predicates based on their domain and range.
                         """
