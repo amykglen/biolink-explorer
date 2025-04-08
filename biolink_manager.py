@@ -6,12 +6,14 @@ releases (YAML format) from GitHub, cache them locally as JSON, and build
 NetworkX directed acyclic graphs (DAGs) for Biolink categories and predicates.
 It includes functionality to handle Biolink versions, caching, and conversion
 to formats suitable for visualization libraries like Dash Cytoscape.
+
+Partially inspired by https://github.com/RTXteam/RTX/tree/master/code/ARAX/BiolinkHelper
 """
 import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Optional, List, Tuple, Union, Set
+from typing import Optional, List, Union, Set
 
 import networkx as nx
 import requests
@@ -94,15 +96,15 @@ class BiolinkManager:
         category_dag = nx.DiGraph()
 
         for class_name_english, info in self.biolink_model_raw["classes"].items():
-            class_name = self.convert_to_biolink_camelcase(class_name_english)
+            class_name = self.convert_to_camelcase(class_name_english)
             # Record relationship between this node and its parent, if provided
             parent_name_english = info.get("is_a")
             if parent_name_english:
-                parent_name = self.convert_to_biolink_camelcase(parent_name_english)
+                parent_name = self.convert_to_camelcase(parent_name_english)
                 category_dag.add_edge(parent_name, class_name)
             # Record relationship between this node and any direct 'mixins', if provided (treat same as is_a)
             direct_mappings_english = info.get("mixins", [])
-            direct_mappings = {self.convert_to_biolink_camelcase(mapping_english)
+            direct_mappings = {self.convert_to_camelcase(mapping_english)
                                for mapping_english in direct_mappings_english}
             for direct_mapping in direct_mappings:
                 category_dag.add_edge(direct_mapping, class_name)
@@ -125,9 +127,6 @@ class BiolinkManager:
         for non_category_node_id in non_category_node_ids:
             category_dag.remove_node(non_category_node_id)
 
-        with open(f"{SCRIPT_DIR}/category_dag.json", "w+") as category_file:
-            json.dump(json_graph.node_link_data(category_dag, edges="edges"), category_file, indent=2)
-
         return category_dag
 
     def build_predicate_dag(self) -> nx.DiGraph:
@@ -136,7 +135,7 @@ class BiolinkManager:
 
         # NOTE: 'slots' includes some things that aren't predicates, but we don't care; doesn't hurt to include them
         for slot_name_english, info in self.biolink_model_raw["slots"].items():
-            slot_name = self.convert_to_biolink_snakecase(slot_name_english)
+            slot_name = self.convert_to_snakecase(slot_name_english)
 
             # Only record this if it's a canonical predicate
             # NOTE: I think only predicates that have two forms are labeled as 'canonical'; single-form are not
@@ -148,8 +147,8 @@ class BiolinkManager:
                 node = predicate_dag.nodes[slot_name]
                 node["is_symmetric"] = True if info.get("symmetric") else False
                 node["is_mixin"] = True if info.get("mixin") else False
-                node["domain"] = self.convert_to_biolink_camelcase(info.get("domain"))
-                node["range"] = self.convert_to_biolink_camelcase(info.get("range"))
+                node["domain"] = self.convert_to_camelcase(info.get("domain"))
+                node["range"] = self.convert_to_camelcase(info.get("range"))
                 if info.get("description"):
                     node["description"] = info["description"]
                 if info.get("notes"):
@@ -160,11 +159,11 @@ class BiolinkManager:
                 # Record relationship between this node and its parent, if provided
                 parent_name_english = info.get("is_a")
                 if parent_name_english:
-                    parent_name = self.convert_to_biolink_snakecase(parent_name_english)
+                    parent_name = self.convert_to_snakecase(parent_name_english)
                     predicate_dag.add_edge(parent_name, slot_name, id=f"{parent_name}--{slot_name}")
                 # Record relationship between this node and any direct 'mixins', if provided (treat same as is_a)
                 direct_mappings_english = info.get("mixins", [])
-                direct_mappings = {self.convert_to_biolink_snakecase(mapping_english)
+                direct_mappings = {self.convert_to_snakecase(mapping_english)
                                    for mapping_english in direct_mappings_english}
                 for direct_mapping in direct_mappings:
                     predicate_dag.add_edge(direct_mapping, slot_name, id=f"{direct_mapping}--{slot_name}")
@@ -175,9 +174,6 @@ class BiolinkManager:
                                           or data.get("is_mixin"))]
         for non_predicate_node_id in non_predicate_node_ids:
             predicate_dag.remove_node(non_predicate_node_id)
-
-        with open(f"{SCRIPT_DIR}/predicate_dag.json", "w+") as predicate_file:
-            json.dump(json_graph.node_link_data(predicate_dag, edges="edges"), predicate_file, indent=2)
 
         return predicate_dag
 
@@ -210,14 +206,14 @@ class BiolinkManager:
         return " ".join(classes)
 
     @staticmethod
-    def convert_to_biolink_camelcase(english_term: Optional[str]):
+    def convert_to_camelcase(english_term: Optional[str]) -> Optional[str]:
         if isinstance(english_term, str):
             return "".join([f"{word[0].upper()}{word[1:]}" for word in english_term.split(" ")])
         else:
             return english_term
 
     @staticmethod
-    def convert_to_biolink_snakecase(english_term: str):
+    def convert_to_snakecase(english_term: str) -> Optional[str]:
         return english_term.replace(' ', '_')
 
     @staticmethod
@@ -261,7 +257,7 @@ class BiolinkManager:
         return False
 
     @staticmethod
-    def get_biolink_github_tags():
+    def get_biolink_github_tags() -> List[str]:
         tags_cache_path = f"{SCRIPT_DIR}/tags_cache.json"
         no_cache_exists = not os.path.exists(tags_cache_path)
         now = datetime.now()
