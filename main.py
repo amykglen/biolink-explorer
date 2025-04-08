@@ -6,9 +6,10 @@ import dash_cytoscape as cyto
 import networkx as nx
 from dash import Dash, Input, Output, dcc, html, State
 
+from biolink_manager import BiolinkManager
+
 # Import custom modules/classes
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from biolink_downloader import BiolinkDownloader
 from styles import Styles
 
 # Load additional Cytoscape layouts (including Dagre)
@@ -27,7 +28,7 @@ class BiolinkDashApp:
 
     def __init__(self) -> None:
         """Initializes the BiolinkDashApp."""
-        self.bd: Optional[BiolinkDownloader] = None
+        self.bm: Optional[BiolinkManager] = None
         self.elements_predicates: Optional[List[Dict[str, Any]]] = None
         self.elements_categories: Optional[List[Dict[str, Any]]] = None
         self.domains: Optional[List[str]] = None
@@ -48,25 +49,25 @@ class BiolinkDashApp:
     def update_biolink_data(self, version: Optional[str] = None) -> None:
         """
         Fetches and processes Biolink data for the specified version using
-        BiolinkDownloader. Updates instance variables holding graph elements
+        BiolinkManager. Updates instance variables holding graph elements
         and filter options.
         """
-        self.bd = BiolinkDownloader(biolink_version=version)
-        self.elements_predicates = self.bd.predicate_dag_dash
-        self.elements_categories = self.bd.category_dag_dash
+        self.bm = BiolinkManager(biolink_version=version)
+        self.elements_predicates = self.bm.predicate_dag_dash
+        self.elements_categories = self.bm.category_dag_dash
 
         # Extract unique domain, range, category, and predicate values for dropdowns
-        if self.bd.category_dag:
-            self.domains = sorted(list(set(self.bd.category_dag.nodes())))
-            self.ranges = sorted(list(set(self.bd.category_dag.nodes())))
-            self.all_categories = sorted(list(set(self.bd.category_dag.nodes())))
+        if self.bm.category_dag:
+            self.domains = sorted(list(set(self.bm.category_dag.nodes())))
+            self.ranges = sorted(list(set(self.bm.category_dag.nodes())))
+            self.all_categories = sorted(list(set(self.bm.category_dag.nodes())))
         else:
             self.domains = []
             self.ranges = []
             self.all_categories = []
 
-        if self.bd.predicate_dag:
-             self.all_predicates = sorted(list(self.bd.predicate_dag.nodes()))
+        if self.bm.predicate_dag:
+             self.all_predicates = sorted(list(self.bm.predicate_dag.nodes()))
         else:
              self.all_predicates = []
 
@@ -89,8 +90,8 @@ class BiolinkDashApp:
                     ], style={"marginRight": "5px"}),
                     dcc.Dropdown(
                         id="biolink-version-input",
-                        options=[{"label": tag, "value": tag} for tag in self.bd.biolink_tags],
-                        value=self.bd.latest_tag,
+                        options=[{"label": tag, "value": tag} for tag in self.bm.biolink_tags],
+                        value=self.bm.latest_tag,
                         clearable=False,
                         style={"width": "120px", "marginRight": "5px"}
                     ),
@@ -645,8 +646,8 @@ class BiolinkDashApp:
         # If search terms are active, filter down to the expanded lineage
         if search_nodes:
             # Calculate the full lineage (ancestors + descendants) for search terms
-            ancestors = self.bd.get_ancestors(nx_dag, search_nodes)
-            descendants = self.bd.get_descendants(nx_dag, search_nodes)
+            ancestors = self.bm.get_ancestors(nx_dag, search_nodes)
+            descendants = self.bm.get_descendants(nx_dag, search_nodes)
             search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
 
             relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
@@ -654,8 +655,8 @@ class BiolinkDashApp:
         # --- Domain/Range Filtering (for Predicates) ---
         if selected_domains or selected_ranges:
             # Get ancestors for selected domains/ranges for hierarchical filtering
-            selected_domains_set = self.bd.get_ancestors(self.bd.category_dag, selected_domains)
-            selected_ranges_set = self.bd.get_ancestors(self.bd.category_dag, selected_ranges)
+            selected_domains_set = self.bm.get_ancestors(self.bm.category_dag, selected_domains)
+            selected_ranges_set = self.bm.get_ancestors(self.bm.category_dag, selected_ranges)
 
             # Filter nodes (predicates) based on domain/range matching
             filtered_node_ids = {node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
@@ -716,7 +717,7 @@ class BiolinkDashApp:
         Grey out chip if value is None or the root category.
         """
         final_color = color
-        if chip_value is None or chip_value == self.bd.root_category:
+        if chip_value is None or chip_value == self.bm.root_category:
             final_color = self.styles.chip_grey
 
         chip_style: Dict[str, Any] = {
@@ -757,7 +758,7 @@ class BiolinkDashApp:
             include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
                 # If a mixin was searched, force 'include mixins' checkbox
-                if any(self.bd.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+                if any(self.bm.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
             return self.filter_graph(self.elements_predicates,
@@ -765,7 +766,7 @@ class BiolinkDashApp:
                                      selected_ranges,
                                      include_mixins_updated,
                                      search_nodes,
-                                     self.bd.predicate_dag), include_mixins_updated
+                                     self.bm.predicate_dag), include_mixins_updated
 
         @self.app.callback(
             Output("cytoscape-dag-cats", "elements"),
@@ -781,7 +782,7 @@ class BiolinkDashApp:
             include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
                 # If a mixin was searched, force 'include mixins' checkbox
-                if any(self.bd.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+                if any(self.bm.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
             return self.filter_graph(self.elements_categories,
@@ -789,7 +790,7 @@ class BiolinkDashApp:
                                      [],
                                      include_mixins_updated,
                                      search_nodes,
-                                     self.bd.category_dag), include_mixins_updated
+                                     self.bm.category_dag), include_mixins_updated
 
         # Callback to display node info (Categories Tab)
         @self.app.callback(
@@ -821,7 +822,7 @@ class BiolinkDashApp:
             or Enter key) and redraws the main content area.
             """
             version = version_tag.strip("v")
-            if version and version != self.bd.biolink_version:
+            if version and version != self.bm.biolink_version:
                  self.update_biolink_data(version)
             # Regenerate the layout with potentially new data/version
             return self.get_main_content()

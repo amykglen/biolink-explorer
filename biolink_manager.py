@@ -1,5 +1,11 @@
 """
-Helper module based off of https://github.com/RTXteam/RTX/blob/master/code/ARAX/BiolinkHelper/biolink_helper.py.
+Helper module for downloading and processing Biolink Model data.
+
+This module provides a class, BiolinkManager, to fetch Biolink Model
+releases (YAML format) from GitHub, cache them locally as JSON, and build
+NetworkX directed acyclic graphs (DAGs) for Biolink categories and predicates.
+It includes functionality to handle Biolink versions, caching, and conversion
+to formats suitable for visualization libraries like Dash Cytoscape.
 """
 import json
 import logging
@@ -12,24 +18,45 @@ import requests
 import yaml
 from networkx.readwrite import json_graph
 
+# --- Constants ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_ROOT_CATEGORY = "NamedThing"
+DEFAULT_ROOT_PREDICATE = "related_to"
+CORE_NX_PROPERTIES = {"id", "source", "target"}
+GITHUB_TAGS_URL = "https://api.github.com/repos/biolink/biolink-model/tags"
+GITHUB_RAW_CONTENT_URL_TEMPLATE = "https://raw.githubusercontent.com/biolink/biolink-model/{version_tag}/biolink-model.yaml"
+TAGS_CACHE_FILENAME = "tags_cache.json"
+TAGS_CACHE_EXPIRY_MINUTES = 5
 
+# --- Logging Configuration ---
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(levelname)s: %(message)s',
                     handlers=[logging.StreamHandler()])
 
 
-class BiolinkDownloader:
+class BiolinkManager:
 
     def __init__(self, biolink_version: Optional[str] = None):
+        """
+        Initializes the BiolinkManager.
+
+        Fetches Biolink tags, determines the version to use, downloads or loads
+        the Biolink model data, and builds the category and predicate DAGs.
+
+        Args:
+            biolink_version: The specific Biolink version number (e.g., "4.1.0")
+                to use. If None, the latest version from GitHub tags will be used.
+        """
+        self.root_category: str = DEFAULT_ROOT_CATEGORY
+        self.root_predicate: str = DEFAULT_ROOT_PREDICATE
+        self.core_nx_properties: Set[str] = CORE_NX_PROPERTIES
+
         self.biolink_tags = self.get_biolink_github_tags()
+        self.biolink_tags_set = set(self.biolink_tags)
         self.latest_tag = self.biolink_tags[0]
         self.biolink_version = biolink_version if biolink_version else self.latest_tag.lstrip("v")
-        self.biolink_yaml_url = f"https://raw.githubusercontent.com/biolink/biolink-model/v{self.biolink_version}/biolink-model.yaml"
         self.biolink_local_path = f"{SCRIPT_DIR}/biolink_model_{self.biolink_version}.json"
-        self.root_category = "NamedThing"
-        self.root_predicate = "related_to"
-        self.core_nx_properties = {"id", "source", "target"}
+
         logging.info(f"Biolink version to use is {self.biolink_version}, latest tag is {self.latest_tag}")
         self.biolink_model_raw = self.download_biolink_model()
 
@@ -38,7 +65,7 @@ class BiolinkDownloader:
         self.predicate_dag = self.build_predicate_dag()
         self.predicate_dag_dash = self.convert_to_dash_format(self.predicate_dag)
 
-        logging.info(f"Done loading BiolinkDownloader.")
+        logging.info(f"Done loading BiolinkManager.")
 
     def download_biolink_model(self) -> dict:
         if os.path.exists(self.biolink_local_path):
@@ -49,11 +76,9 @@ class BiolinkDownloader:
         else:
             # Otherwise grab the Biolink Model yaml from GitHub
             logging.info(f"Grabbing Biolink Model YAML from GitHub")
-            response = requests.get(self.biolink_yaml_url, timeout=10)
-            # Sometimes Biolink's tags don't start with a 'v' in front of the version, so try that if necessary
-            if response.status_code != 200:
-                secondary_yaml_url = self.biolink_yaml_url.replace("biolink-model/v", "biolink-model/")
-                response = requests.get(secondary_yaml_url, timeout=10)
+            version_tag = f"v{self.biolink_version}" if f"v{self.biolink_version}" in self.biolink_tags_set else self.biolink_version
+            request_url = GITHUB_RAW_CONTENT_URL_TEMPLATE.format(version_tag=version_tag)
+            response = requests.get(request_url, timeout=10)
             if response.status_code == 200:
                 biolink_dict = yaml.safe_load(response.text)
                 with open(self.biolink_local_path, "w+") as biolink_json_file:
@@ -260,7 +285,7 @@ class BiolinkDownloader:
 
 
 def main():
-    downloader = BiolinkDownloader()
+    downloader = BiolinkManager()
 
 
 if __name__ == "__main__":
