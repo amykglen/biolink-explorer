@@ -854,4 +854,4 @@ if __name__ == "__main__":
     biolink_app = BiolinkDashApp()
     # Set debug=True for development (auto-reloading, error messages)
     # Set debug=False for production
-    biolink_app.run(debug=True)
+    biolink_app.run(debug=False)
