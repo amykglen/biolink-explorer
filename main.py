@@ -401,6 +401,13 @@ class BiolinkDashApp:
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
+                            ". Its source code lives ",
+                            html.A(
+                                "here",
+                                href="https://github.com/amykglen/biolink-explorer",
+                                target="_blank",
+                                style=self.styles.hyperlink_style,
+                            ),
                             ".",
                         ]
                     ),
@@ -424,7 +431,7 @@ class BiolinkDashApp:
             A list of Dash HTML components or a string message.
         """
         if not selected_nodes:
-            return "Click on a node to see details."
+            return "Scroll to zoom in or out. Click on a node to see details."
 
         node_data = selected_nodes[0]
 
