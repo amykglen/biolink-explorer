@@ -244,7 +244,7 @@ class BiolinkDashApp:
                             "categories (i.e. node types) and predicates (i.e., edge types) within the ",
                             html.A(
                                 "Biolink Model",
-                                href="https://doi.org/10.1111/cts.13302",
+                                href="https://biolink.github.io/biolink-model",
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
@@ -280,7 +280,7 @@ class BiolinkDashApp:
                             "Clicking on a node in either graph will display details from the ",
                             html.A(
                                 "Biolink Model YAML",
-                                href="https://github.com/biolink/biolink-model/blob/master/biolink-model.yaml",
+                                href=f"https://github.com/biolink/biolink-model/blob/master/biolink-model.yaml",
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
@@ -835,7 +835,7 @@ class BiolinkDashApp:
             if version_tag:
                 return html.A(
                     "Biolink Model",
-                    href=f"https://github.com/biolink/biolink-model/releases/tag/{version_tag}",
+                    href=f"https://github.com/biolink/biolink-model/blob/{version_tag}/biolink-model.yaml",
                     target="_blank",
                     style=self.styles.hyperlink_style
                 )

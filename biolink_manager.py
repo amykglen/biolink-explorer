@@ -57,6 +57,7 @@ class BiolinkManager:
         self.biolink_tags_set = set(self.biolink_tags)
         self.latest_tag = self.biolink_tags[0]
         self.biolink_version = biolink_version if biolink_version else self.latest_tag.lstrip("v")
+        self.biolink_tag = f"v{self.biolink_version}" if f"v{self.biolink_version}" in self.biolink_tags_set else self.biolink_version
         self.biolink_local_path = f"{SCRIPT_DIR}/biolink_model_{self.biolink_version}.json"
 
         logging.info(f"Biolink version to use is {self.biolink_version}, latest tag is {self.latest_tag}")
@@ -78,8 +79,7 @@ class BiolinkManager:
         else:
             # Otherwise grab the Biolink Model yaml from GitHub
             logging.info(f"Grabbing Biolink Model YAML from GitHub")
-            version_tag = f"v{self.biolink_version}" if f"v{self.biolink_version}" in self.biolink_tags_set else self.biolink_version
-            request_url = GITHUB_RAW_CONTENT_URL_TEMPLATE.format(version_tag=version_tag)
+            request_url = GITHUB_RAW_CONTENT_URL_TEMPLATE.format(version_tag=self.biolink_tag)
             response = requests.get(request_url, timeout=10)
             if response.status_code == 200:
                 biolink_dict = yaml.safe_load(response.text)
