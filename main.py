@@ -88,6 +88,7 @@ class BiolinkDashApp:
         return html.Div([
             # Store for the user's selected version tag
             dcc.Store(id='session-biolink-version-store', data=initial_version_tag),  # Initialize with default
+            dcc.Input(id='tab-switch-trigger', style={'display': 'none'}, value=0),
 
             # Header section with title and version selector
             html.Div([
@@ -136,8 +137,11 @@ class BiolinkDashApp:
         return html.Div(
             id="app-container",
             children=[
-                dcc.Tabs([
-                    dcc.Tab(label="Categories", children=[
+                dcc.Tabs(
+                    id="tabs",
+                    value="tab-1",
+                    children=[
+                    dcc.Tab(label="Categories", value="tab-1", children=[
                         html.Div(
                             style=tab_content_style,
                             children=[
@@ -152,7 +156,7 @@ class BiolinkDashApp:
                                 html.Div(id="node-info-cats", style=self.styles.node_info_div_style)
                             ])
                     ]),
-                    dcc.Tab(label="Predicates", children=[
+                    dcc.Tab(label="Predicates", value="tab-2", children=[
                         html.Div(
                             style=tab_content_style,
                             children=[
@@ -770,6 +774,7 @@ class BiolinkDashApp:
             Input("range-filter", "value"),
             Input("include-mixins-preds", "value"),
             Input("node-search-preds", "value"),
+            Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
             State('session-biolink-version-store', 'data'),  # READ version from store
             prevent_initial_call=True  # Prevent initial call for filtering
         )
@@ -778,6 +783,7 @@ class BiolinkDashApp:
             selected_ranges: Optional[List[str]],
             include_mixins: List[str],
             search_nodes: Optional[List[str]],
+            tab_trigger: int,
             version_tag: str
         ) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Filters predicate graph based on domain, range, mixins, and search."""
@@ -811,12 +817,14 @@ class BiolinkDashApp:
             Output("include-mixins-cats", "value"),
             Input("include-mixins-cats", "value"),
             Input("node-search-cats", "value"),
+            Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
             State('session-biolink-version-store', 'data'),  # READ version from store
             prevent_initial_call=True  # Prevent initial call for filtering
         )
         def filter_graph_categories(
             include_mixins: List[str],
             search_nodes: Optional[List[str]],
+            tab_trigger: int,
             version_tag: str
         ) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Filters category graph based on mixins and search."""
@@ -919,6 +927,17 @@ class BiolinkDashApp:
                     cat_filters,
                     pred_filters,
                     version_link)
+
+        # Callback to update the hidden trigger on tab switch
+        @self.app.callback(
+            Output('tab-switch-trigger', 'value'),
+            Input('tabs', 'value'),
+            State('tab-switch-trigger', 'value'),
+            prevent_initial_call=True
+        )
+        def on_tab_switch(active_tab, current_trigger_value):
+            # Simply increment the hidden input's value to trigger other callbacks
+            return current_trigger_value + 1
 
     # ------------------------------ App Runner ------------------------------- #
 
