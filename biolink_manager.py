@@ -36,6 +36,41 @@ logging.basicConfig(level=logging.DEBUG,
                     handlers=[logging.StreamHandler()])
 
 
+def get_biolink_github_tags() -> List[str]:
+    tags_cache_path = f"{SCRIPT_DIR}/tags_cache.json"
+    no_cache_exists = not os.path.exists(tags_cache_path)
+    now = datetime.now()
+    if no_cache_exists or (now - datetime.fromtimestamp(os.path.getmtime(tags_cache_path)) >= timedelta(minutes=5)):
+        # Our cache is stale, so we'll update it
+        logging.info(f"Updating github tags cache..")
+        tags = []
+        page = 1
+        per_page = 100  # GitHub's max per page
+        while True:
+            url = f"https://api.github.com/repos/biolink/biolink-model/tags?page={page}&per_page={per_page}"
+            response = requests.get(url)
+            if response.status_code != 200:
+                raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
+            page_tags = response.json()
+            if not page_tags:
+                break
+            tags.extend(page_tags)
+            page += 1
+
+        # Save the updated tags to our cache
+        tag_names = [tag["name"] for tag in tags]
+        with open(tags_cache_path, "w+") as tags_cache_file:
+            json.dump(tag_names, tags_cache_file, indent=2)
+
+        return tag_names
+    else:
+        logging.info(f"Loading cached GitHub tags..")
+        with open(tags_cache_path, "r") as tags_cache_file:
+            tag_names = json.load(tags_cache_file)
+
+    return tag_names
+
+
 class BiolinkManager:
 
     def __init__(self, biolink_version: Optional[str] = None):
@@ -53,7 +88,7 @@ class BiolinkManager:
         self.root_predicate: str = DEFAULT_ROOT_PREDICATE
         self.core_nx_properties: Set[str] = CORE_NX_PROPERTIES
 
-        self.biolink_tags = self.get_biolink_github_tags()
+        self.biolink_tags = get_biolink_github_tags()
         self.biolink_tags_set = set(self.biolink_tags)
         self.latest_tag = self.biolink_tags[0]
         self.biolink_version = biolink_version if biolink_version else self.latest_tag.lstrip("v")
@@ -67,6 +102,9 @@ class BiolinkManager:
         self.category_dag_dash = self.convert_to_dash_format(self.category_dag)
         self.predicate_dag = self.build_predicate_dag()
         self.predicate_dag_dash = self.convert_to_dash_format(self.predicate_dag)
+
+        # Get rid of items we don't need anymore to save memory
+        del self.biolink_model_raw
 
         logging.info(f"Done loading BiolinkManager.")
 
@@ -255,41 +293,6 @@ class BiolinkManager:
                    if item.get("value") and (item.get("tag") == "biolink:canonical_predicate" or item.get("tag") == "canonical_predicate")):
                 return True
         return False
-
-    @staticmethod
-    def get_biolink_github_tags() -> List[str]:
-        tags_cache_path = f"{SCRIPT_DIR}/tags_cache.json"
-        no_cache_exists = not os.path.exists(tags_cache_path)
-        now = datetime.now()
-        if no_cache_exists or (now - datetime.fromtimestamp(os.path.getmtime(tags_cache_path)) >= timedelta(minutes=5)):
-            # Our cache is stale, so we'll update it
-            logging.info(f"Updating github tags cache..")
-            tags = []
-            page = 1
-            per_page = 100  # GitHub's max per page
-            while True:
-                url = f"https://api.github.com/repos/biolink/biolink-model/tags?page={page}&per_page={per_page}"
-                response = requests.get(url)
-                if response.status_code != 200:
-                    raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
-                page_tags = response.json()
-                if not page_tags:
-                    break
-                tags.extend(page_tags)
-                page += 1
-
-            # Save the updated tags to our cache
-            tag_names = [tag["name"] for tag in tags]
-            with open(tags_cache_path, "w+") as tags_cache_file:
-                json.dump(tag_names, tags_cache_file, indent=2)
-
-            return tag_names
-        else:
-            logging.info(f"Loading cached GitHub tags..")
-            with open(tags_cache_path, "r") as tags_cache_file:
-                tag_names = json.load(tags_cache_file)
-
-        return tag_names
 
 
 def main():

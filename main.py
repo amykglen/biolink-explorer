@@ -6,7 +6,7 @@ import dash_cytoscape as cyto
 import networkx as nx
 from dash import Dash, Input, Output, dcc, html, State
 
-from biolink_manager import BiolinkManager
+from biolink_manager import BiolinkManager, get_biolink_github_tags
 
 # Import custom modules/classes
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -28,54 +28,66 @@ class BiolinkDashApp:
 
     def __init__(self) -> None:
         """Initializes the BiolinkDashApp."""
-        self.bm: Optional[BiolinkManager] = None
-        self.elements_predicates: Optional[List[Dict[str, Any]]] = None
-        self.elements_categories: Optional[List[Dict[str, Any]]] = None
-        self.domains: Optional[List[str]] = None
-        self.ranges: Optional[List[str]] = None
-        self.all_categories: Optional[List[str]] = None
-        self.all_predicates: Optional[List[str]] = None
+        self.bm_cache : Dict[str, any] = dict()
+        self.root_category = "NamedThing"
+        self.root_predicate = "related_to"
 
         self.styles: Styles = Styles()
-        # Fetch initial data based on the default version
-        self.update_biolink_data()
 
-        self.app: Dash = Dash(__name__, title="Biolink Explorer")
+        self.app: Dash = Dash(__name__, title="Biolink Explorer", suppress_callback_exceptions=True)
         self.app.layout = self.get_layout()
         self.register_callbacks()
 
     # ------------------------- Data Loading and Update ------------------------- #
 
-    def update_biolink_data(self, version: Optional[str] = None) -> None:
+    def get_biolink_data_for_version(self, version: str) -> Dict[str, any]:
         """
         Fetches and processes Biolink data for the specified version using
-        BiolinkManager. Updates instance variables holding graph elements
-        and filter options.
+        BiolinkManager. Updates a cache with data for different Biolink
+        versions.
         """
-        self.bm = BiolinkManager(biolink_version=version)
-        self.elements_predicates = self.bm.predicate_dag_dash
-        self.elements_categories = self.bm.category_dag_dash
+        if version not in self.bm_cache:
+            bm = BiolinkManager(biolink_version=version)
+            elements_predicates = bm.predicate_dag_dash
+            elements_categories = bm.category_dag_dash
 
-        # Extract unique domain, range, category, and predicate values for dropdowns
-        if self.bm.category_dag:
-            self.domains = sorted(list(set(self.bm.category_dag.nodes())))
-            self.ranges = sorted(list(set(self.bm.category_dag.nodes())))
-            self.all_categories = sorted(list(set(self.bm.category_dag.nodes())))
-        else:
-            self.domains = []
-            self.ranges = []
-            self.all_categories = []
+            # Extract unique domain, range, category, and predicate values for dropdowns
+            if bm.category_dag:
+                domains = sorted(list(set(bm.category_dag.nodes())))
+                ranges = sorted(list(set(bm.category_dag.nodes())))
+                all_categories = sorted(list(set(bm.category_dag.nodes())))
+            else:
+                domains = []
+                ranges = []
+                all_categories = []
 
-        if self.bm.predicate_dag:
-             self.all_predicates = sorted(list(self.bm.predicate_dag.nodes()))
-        else:
-             self.all_predicates = []
+            if bm.predicate_dag:
+                all_predicates = sorted(list(bm.predicate_dag.nodes()))
+            else:
+                all_predicates = []
+            self.bm_cache[version] = {"bm": bm,
+                                      "elements_predicates": elements_predicates,
+                                      "elements_categories": elements_categories,
+                                      "domains": domains,
+                                      "ranges": ranges,
+                                      "all_categories": all_categories,
+                                      "all_predicates": all_predicates}
+        return self.bm_cache[version]
 
     # -------------------------- Layout Generation Methods -------------------------- #
 
     def get_layout(self) -> html.Div:
         """Generates the main layout Div for the Dash application."""
+
+        # Determine initial version and pre-load/cache its data
+        all_version_tags = get_biolink_github_tags()
+        initial_version_tag = all_version_tags[0]
+        self.get_biolink_data_for_version(initial_version_tag)
+
         return html.Div([
+            # Store for the user's selected version tag
+            dcc.Store(id='session-biolink-version-store', data=initial_version_tag),  # Initialize with default
+
             # Header section with title and version selector
             html.Div([
                 html.Div("Biolink Model Explorer", style={
@@ -90,8 +102,8 @@ class BiolinkDashApp:
                     ], style={"marginRight": "5px"}),
                     dcc.Dropdown(
                         id="biolink-version-input",
-                        options=[{"label": tag, "value": tag} for tag in self.bm.biolink_tags],
-                        value=self.bm.latest_tag,
+                        options=[{"label": tag, "value": tag} for tag in all_version_tags],
+                        value=initial_version_tag,
                         clearable=False,
                         style={"width": "120px", "marginRight": "5px"}
                     ),
@@ -128,10 +140,10 @@ class BiolinkDashApp:
                         html.Div(
                             style=tab_content_style,
                             children=[
-                                self.get_filter_divs_cats(),
+                                # Filters will be populated by callback
+                                html.Div(id="category-filters-container"),
                                 cyto.Cytoscape(
                                     id="cytoscape-dag-cats",
-                                    elements=self.elements_categories,
                                     layout=self.styles.layout_settings,
                                     style=cytoscape_style,
                                     stylesheet=self.styles.main_styling
@@ -143,10 +155,10 @@ class BiolinkDashApp:
                         html.Div(
                             style=tab_content_style,
                             children=[
-                                self.get_filter_divs_preds(),
+                                # Filters will be populated by callback
+                                html.Div(id="predicate-filters-container"),
                                 cyto.Cytoscape(
                                     id="cytoscape-dag-preds",
-                                    elements=self.elements_predicates,
                                     layout=self.styles.layout_settings,
                                     style=cytoscape_style,
                                     stylesheet=self.styles.main_styling
@@ -158,19 +170,19 @@ class BiolinkDashApp:
                 ]),
         ])
 
-    def get_filter_divs_preds(self) -> html.Div:
+    def get_filter_divs_preds(self, all_predicates: List[str], domains: List[str], ranges: List[str]) -> html.Div:
         """Generates the filter controls Div for the Predicates tab."""
         filter_div_style = {"width": "20%", "display": "inline-block", "padding": "0 1%"}
         return html.Div(
             [
-                self.get_search_filter("node-search-preds", self.all_predicates or []),
+                self.get_search_filter("node-search-preds", all_predicates or []),
                 self.get_mixin_filter("include-mixins-preds", show_by_default=True),
                 html.Div(
                     [
                         html.Label("Filter by Domain (hierarchical):"),
                         dcc.Dropdown(
                             id="domain-filter",
-                            options=[{"label": d, "value": d} for d in self.domains or []],
+                            options=[{"label": d, "value": d} for d in domains or []],
                             multi=True,
                             placeholder="Select one or more domains...",
                         ),
@@ -182,7 +194,7 @@ class BiolinkDashApp:
                         html.Label("Filter by Range (hierarchical):"),
                         dcc.Dropdown(
                             id="range-filter",
-                            options=[{"label": r, "value": r} for r in self.ranges or []],
+                            options=[{"label": r, "value": r} for r in ranges or []],
                             multi=True,
                             placeholder="Select one or more ranges...",
                         ),
@@ -193,11 +205,11 @@ class BiolinkDashApp:
             style=self.styles.filters_wrapper_style,
         )
 
-    def get_filter_divs_cats(self) -> html.Div:
+    def get_filter_divs_cats(self, all_categories: List[str]) -> html.Div:
         """Generates the filter controls Div for the Categories tab."""
         return html.Div(
             [
-                self.get_search_filter("node-search-cats", self.all_categories or []),
+                self.get_search_filter("node-search-cats", all_categories or []),
                 self.get_mixin_filter("include-mixins-cats", show_by_default=False),
             ],
             style=self.styles.filters_wrapper_style,
@@ -615,6 +627,7 @@ class BiolinkDashApp:
         include_mixins: List[str],
         search_nodes: Optional[List[str]],
         nx_dag: nx.DiGraph,
+        bm: BiolinkManager
     ) -> List[Dict[str, Any]]:
         """
         Filters a set of Cytoscape graph elements based on various criteria:
@@ -627,6 +640,7 @@ class BiolinkDashApp:
             include_mixins: List indicating if mixins should be included (e.g., ['include']).
             search_nodes: List of node IDs directly selected in the search dropdown.
             nx_dag: The relevant NetworkX directed graph (either for categories or predicates).
+            bm: The BiolinkManager instance to use (for the proper version).
 
         Returns:
             The filtered list of Cytoscape elements.
@@ -653,8 +667,8 @@ class BiolinkDashApp:
         # If search terms are active, filter down to the expanded lineage
         if search_nodes:
             # Calculate the full lineage (ancestors + descendants) for search terms
-            ancestors = self.bm.get_ancestors(nx_dag, search_nodes)
-            descendants = self.bm.get_descendants(nx_dag, search_nodes)
+            ancestors = bm.get_ancestors(nx_dag, search_nodes)
+            descendants = bm.get_descendants(nx_dag, search_nodes)
             search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
 
             relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
@@ -662,8 +676,8 @@ class BiolinkDashApp:
         # --- Domain/Range Filtering (for Predicates) ---
         if selected_domains or selected_ranges:
             # Get ancestors for selected domains/ranges for hierarchical filtering
-            selected_domains_set = self.bm.get_ancestors(self.bm.category_dag, selected_domains)
-            selected_ranges_set = self.bm.get_ancestors(self.bm.category_dag, selected_ranges)
+            selected_domains_set = bm.get_ancestors(bm.category_dag, selected_domains)
+            selected_ranges_set = bm.get_ancestors(bm.category_dag, selected_ranges)
 
             # Filter nodes (predicates) based on domain/range matching
             filtered_node_ids = {node["data"]["id"] for node in relevant_elements if "id" in node["data"] and
@@ -724,7 +738,7 @@ class BiolinkDashApp:
         Grey out chip if value is None or the root category.
         """
         final_color = color
-        if chip_value is None or chip_value == self.bm.root_category:
+        if chip_value is None or chip_value == self.root_category:
             final_color = self.styles.chip_grey
 
         chip_style: Dict[str, Any] = {
@@ -748,56 +762,83 @@ class BiolinkDashApp:
         # Callbacks to filter graph elements based on dropdown/other selections
 
         @self.app.callback(
-            Output("cytoscape-dag-preds", "elements"),
+            Output("cytoscape-dag-preds", "elements", allow_duplicate=True),
             Output("include-mixins-preds", "value"),
             Input("domain-filter", "value"),
             Input("range-filter", "value"),
             Input("include-mixins-preds", "value"),
-            Input("node-search-preds", "value")
+            Input("node-search-preds", "value"),
+            State('session-biolink-version-store', 'data'),  # READ version from store
+            prevent_initial_call=True  # Prevent initial call for filtering
         )
         def filter_graph_predicates(
             selected_domains: Optional[List[str]],
             selected_ranges: Optional[List[str]],
             include_mixins: List[str],
             search_nodes: Optional[List[str]],
+            version_tag: str
         ) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Filters predicate graph based on domain, range, mixins, and search."""
+
+            # Get data from cache for the session's version
+            version_data = self.get_biolink_data_for_version(version_tag)
+            if not version_data or not version_data.get('bm'): # Check if data/bm loaded
+                 # Return empty elements and original mixin value if data is missing
+                 return [], include_mixins
+
+            bm = version_data['bm'] # Use the BM instance for THIS version
+            elements_predicates = version_data['elements_predicates'] # Use elements for THIS version
+
+
             include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
                 # If a mixin was searched, force 'include mixins' checkbox
-                if any(self.bm.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+                if any(bm.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return self.filter_graph(self.elements_predicates,
+            return self.filter_graph(elements_predicates,
                                      selected_domains,
                                      selected_ranges,
                                      include_mixins_updated,
                                      search_nodes,
-                                     self.bm.predicate_dag), include_mixins_updated
+                                     bm.predicate_dag,
+                                     bm), include_mixins_updated
 
         @self.app.callback(
-            Output("cytoscape-dag-cats", "elements"),
+            Output("cytoscape-dag-cats", "elements", allow_duplicate=True),
             Output("include-mixins-cats", "value"),
             Input("include-mixins-cats", "value"),
-            Input("node-search-cats", "value")
+            Input("node-search-cats", "value"),
+            State('session-biolink-version-store', 'data'),  # READ version from store
+            prevent_initial_call=True  # Prevent initial call for filtering
         )
         def filter_graph_categories(
             include_mixins: List[str],
             search_nodes: Optional[List[str]],
+            version_tag: str
         ) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Filters category graph based on mixins and search."""
+
+            # Get data from cache for the session's version
+            version_data = self.get_biolink_data_for_version(version_tag)
+            if not version_data or not version_data.get('bm'): # Check if data/bm loaded
+                 return [], include_mixins
+            bm = version_data['bm'] # Use the BM instance for THIS version
+            elements_categories = version_data['elements_categories'] # Use elements for THIS version
+
             include_mixins_updated = include_mixins # Start with user's selection
             if search_nodes:
                 # If a mixin was searched, force 'include mixins' checkbox
-                if any(self.bm.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+                if any(bm.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return self.filter_graph(self.elements_categories,
+            return self.filter_graph(elements_categories,
                                      [],
                                      [],
                                      include_mixins_updated,
                                      search_nodes,
-                                     self.bm.category_dag), include_mixins_updated
+                                     bm.category_dag,
+                                     bm), include_mixins_updated
 
         # Callback to display node info (Categories Tab)
         @self.app.callback(
@@ -817,37 +858,65 @@ class BiolinkDashApp:
             """Displays information for the selected predicate node."""
             return self.get_node_info(selected_nodes)
 
-        # Callback to update the entire main content when version changes
+        # Update the session store when version dropdown changes
         @self.app.callback(
-            Output("main-content", "children"),
-            Input("biolink-version-input", "value"),
-            prevent_initial_call=True, # Don't run on app startup
+            Output('session-biolink-version-store', 'data'),
+            Input('biolink-version-input', 'value')
+            # Note: No prevent_initial_call=True, we want it to run on load
+            # with the initial dropdown value
         )
-        def update_content_on_version_submit(version_tag: str) -> html.Div:
-            """
-            Updates Biolink data based on the submitted version (via button
-            or Enter key) and redraws the main content area.
-            """
-            version = version_tag.strip("v")
-            if version and version != self.bm.biolink_version:
-                 self.update_biolink_data(version)
-            # Regenerate the layout with potentially new data/version
-            return self.get_main_content()
+        def update_session_version(version_tag):
+            # if not version_tag:
+            #     return dash.no_update # Should not happen with clearable=False
+            # Ensure data is loaded into cache (won't reload if already present)
+            self.get_biolink_data_for_version(version_tag)
+            # Store the selected version tag in the user's session
+            return version_tag
 
+        # Update graphs, filter options, and links when session version changes
         @self.app.callback(
-            Output("biolink-version-link", "children"),
-            Input("biolink-version-input", "value")
+            Output('cytoscape-dag-cats', 'elements'),
+            Output('cytoscape-dag-preds', 'elements'),
+            Output('category-filters-container', 'children'),
+            Output('predicate-filters-container', 'children'),
+            Output('biolink-version-link', 'children'),
+            Input('session-biolink-version-store', 'data') # Triggered by store change
         )
-        def update_biolink_anchor(version_tag: str) -> html.A:
-            if version_tag:
-                return html.A(
+        def update_ui_for_version(version_tag):
+            if not version_tag:
+                return [], [], [], [], html.A() # Handle initial or error state
+
+            # Get data from cache for the session's version
+            version_data = self.get_biolink_data_for_version(version_tag)
+            if not version_data: # Handle case where loading failed
+                 return [], [], [], [], html.A("Error loading version", href="#")
+
+            # Generate filter divs using data for this version
+            cat_filters = self.get_filter_divs_cats(version_data['all_categories'])
+            pred_filters = self.get_filter_divs_preds(version_data['all_predicates'],
+                                                      version_data['domains'],
+                                                      version_data['ranges'])
+
+            # Generate version link
+            # Use actual version from bm instance if possible, otherwise use tag
+            actual_version = version_tag
+            if version_data.get('bm'):
+                actual_version = version_data['bm'].biolink_version
+
+            version_link = html.A(
                     "Biolink Model",
-                    href=f"https://github.com/biolink/biolink-model/blob/{version_tag}/biolink-model.yaml",
+                    # Use actual version for link text if different from tag?
+                    href=f"https://github.com/biolink/biolink-model/blob/{version_tag}/biolink-model.yaml", # Link using tag
                     target="_blank",
                     style=self.styles.hyperlink_style
                 )
-            else:
-                return html.A()
+
+            # Return updated elements and filter components
+            return (version_data['elements_categories'],
+                    version_data['elements_predicates'],
+                    cat_filters,
+                    pred_filters,
+                    version_link)
 
     # ------------------------------ App Runner ------------------------------- #
 
