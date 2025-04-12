@@ -1,7 +1,12 @@
+from typing import Optional, Any, Dict
+
 
 class Styles:
 
     def __init__(self):
+        self.root_category = "NamedThing"
+        self.root_predicate = "related_to"
+
         self.node_green = "#dae3b6"
         self.node_border_green = "#bece7f"
         self.node_grey = "#e9e9e9"
@@ -92,3 +97,42 @@ class Styles:
                            "nodeDimensionsIncludeLabels": True,
                            # "nodeSep": 50,  # Adjust horizontal spacing
                            "rankSep": 640}  # Adjust vertical spacing (between ranks)
+
+        self.tab_content_style = {
+            "display": "flex",
+            "flexDirection": "column",
+            # Adjust height based on header and tabs
+            "height": "calc(100vh - 110px)",
+        }
+        self.cytoscape_style = {"width": "100%", "height": "100%"}
+
+    def get_chip_style(
+            self,
+            color: str,
+            chip_value: Optional[Any] = "value_present",  # Use a sentinel instead of None directly
+            opacity: Optional[float] = None,
+            border: Optional[str] = None,
+            circular: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Generates a style dictionary for visual 'chip' elements.
+        Grey out chip if value is None or the root category.
+        """
+        final_color = color
+        if chip_value is None or chip_value == self.root_category:
+            final_color = self.chip_grey
+
+        chip_style: Dict[str, Any] = {
+            "padding": "2px 5px",
+            "borderRadius": "10px" if circular else "3px",
+            "backgroundColor": final_color,
+            "marginLeft": "8px",
+            "fontSize": "15px",
+            "display": "inline-block",
+            "color": "black",  # Ensure text visibility
+        }
+        if opacity is not None:
+            chip_style["opacity"] = opacity
+        if border:
+            chip_style["border"] = border
+        return chip_style
