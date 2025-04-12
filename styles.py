@@ -3,9 +3,9 @@ class Styles:
 
     def __init__(self):
         self.node_green = "#dae3b6"
-        self.node_border_green = "#bece7f"
+        self.node_border_green = "#abc05a"
         self.node_grey = "#e9e9e9"
-        self.node_border_grey = "#cfcfcf"
+        self.node_border_grey = "#b5b5b5"
         self.highlight_orange = "#ff5500"
         self.highlight_border_orange = "#e64c00"
         self.edge_grey = "#b4b4b4"
@@ -14,7 +14,7 @@ class Styles:
         self.chip_peach = "#FFEBC2"
         self.chip_purple = "#F7DEEA"
         self.link_blue = "#26a1c9"  # 2c9ab7
-        self.regular_opacity = 0.7
+        self.regular_opacity = 0.9
         self.mixin_opacity = 0.4
 
         self.node_info_div_style = {

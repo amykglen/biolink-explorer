@@ -171,7 +171,7 @@ class BiolinkDashApp:
                                 html.Div(id="node-info-preds", style=self.styles.node_info_div_style)
                             ])
                     ]),
-                    dcc.Tab(label="Info", children=self.get_app_info())
+                    dcc.Tab(label="Info", value="tab-3", children=self.get_app_info())
                 ]),
         ])
 
