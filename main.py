@@ -673,7 +673,7 @@ class BiolinkDashApp:
             descendants = bm.get_descendants(nx_dag, search_nodes)
             search_nodes_expanded = set(search_nodes).union(ancestors, descendants)
 
-            relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, element_set)
+            relevant_elements = self.filter_graph_to_certain_nodes(search_nodes_expanded, relevant_elements)
 
         # --- Domain/Range Filtering (for Predicates) ---
         if selected_domains or selected_ranges:
