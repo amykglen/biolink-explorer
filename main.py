@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -653,7 +654,8 @@ class BiolinkDashApp:
 
         # --- Search Filtering ---
         # First, clear previous search highlights and apply new ones
-        for element in element_set:
+        relevant_elements = copy.deepcopy(relevant_elements)
+        for element in relevant_elements:
             if "id" in element.get("data", {}):
                 # Remove 'searched' class safely
                 current_classes = element.get("classes", "").split()
