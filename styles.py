@@ -15,6 +15,7 @@ class Styles:
         self.chip_purple = "#F7DEEA"
         self.link_blue = "#26a1c9"  # 2c9ab7
         self.regular_opacity = 0.9
+        self.highlight_opacity = 0.7
         self.mixin_opacity = 0.4
 
         self.node_info_div_style = {
@@ -81,6 +82,7 @@ class Styles:
             {"selector": ":selected", "style": {
                 "background-color": self.highlight_orange,
                 "border-color": self.highlight_border_orange,
+                "background-opacity": self.highlight_opacity
             }}
         ]
 
