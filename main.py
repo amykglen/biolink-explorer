@@ -1,9 +1,9 @@
 import copy
+import logging
 import os
 import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-import dash_cytoscape as cyto
 import networkx as nx
 from dash import Dash, Input, Output, dcc, html, State
 
@@ -12,9 +12,6 @@ from biolink_manager import BiolinkManager, get_biolink_github_tags
 # Import custom modules/classes
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from styles import Styles
-
-# Load additional Cytoscape layouts (including Dagre)
-cyto.load_extra_layouts()
 
 
 class BiolinkDashApp:
@@ -48,7 +45,14 @@ class BiolinkDashApp:
         versions.
         """
         if version not in self.bm_cache:
-            bm = BiolinkManager(biolink_version=version)
+            try:
+                bm = BiolinkManager(biolink_version=version)
+            except Exception as load_error:
+                # Some versions may fail to load (e.g. an unparsable schema). Cache
+                # the failure so we don't retry every callback, and degrade gracefully.
+                logging.error(f"Failed to load Biolink version {version}: {load_error}")
+                self.bm_cache[version] = None
+                return None
             elements_predicates = bm.predicate_dag_dash
             elements_categories = bm.category_dag_dash
 
@@ -92,22 +96,26 @@ class BiolinkDashApp:
 
             # Header section with title and version selector
             html.Div([
-                html.Div("Biolink Model Explorer", style={
-                    "fontSize": "18px",
-                    "fontWeight": "bold"
-                }),
+                html.Div([
+                    html.Span("Biolink Model Explorer", style={
+                        "fontSize": "18px",
+                        "fontWeight": 700,
+                        "color": self.styles.text,
+                        "letterSpacing": "-0.01em",
+                    }),
+                ]),
                 html.Div([
                     html.Label([
                         "Showing ",
                         html.Div(id="biolink-version-link", style={"display": "inline-block"}),
                         " version:"
-                    ], style={"marginRight": "5px"}),
+                    ], style={"marginRight": "8px", "color": self.styles.text_muted, "fontSize": "14px"}),
                     dcc.Dropdown(
                         id="biolink-version-input",
                         options=[{"label": tag, "value": tag} for tag in all_version_tags],
                         value=initial_version_tag,
                         clearable=False,
-                        style={"width": "120px", "marginRight": "5px"}
+                        style={"width": "130px", "marginRight": "5px"}
                     ),
                 ], style={
                     "display": "flex",
@@ -117,62 +125,74 @@ class BiolinkDashApp:
                 "display": "flex",
                 "justifyContent": "space-between",
                 "alignItems": "center",
-                "padding": "10px 10px",
-                "borderBottom": "1px solid #ddd"
+                "padding": "12px 18px",
+                "backgroundColor": self.styles.surface,
+                "borderBottom": f"1px solid {self.styles.border_subtle}",
             }),
             # Main content area, updated by callback
             html.Div(id="main-content", children=self.get_main_content())
-        ])
+        ], style={
+            "fontFamily": self.styles.font_family,
+            "backgroundColor": self.styles.bg,
+            "color": self.styles.text,
+            "minHeight": "100vh",
+        })
 
     def get_main_content(self) -> html.Div:
         """Generates the main content area including tabs and graphs."""
-        tab_content_style = {
+        # Each tab is a horizontal row: the graph column (filters + tree) on the left,
+        # and the node-detail panel on the right.
+        tab_row_style = {
             "display": "flex",
-            "flexDirection": "column",
-            # Adjust height based on header and tabs
+            "flexDirection": "row",
             "height": "calc(100vh - 110px)",
         }
-        cytoscape_style = {"width": "100%", "height": "100%"}
+        graph_col_style = {
+            "display": "flex",
+            "flexDirection": "column",
+            "flex": "1 1 auto",
+            "minWidth": "0",
+            "height": "100%",
+        }
+        tree_style = {"width": "100%", "height": "100%", "flex": "1 1 auto",
+                      "minHeight": "0", "backgroundColor": self.styles.bg, "overflow": "hidden"}
+
+        def tab_body(filters_id, tree_id, info_id):
+            return html.Div(
+                style=tab_row_style,
+                children=[
+                    html.Div(
+                        style=graph_col_style,
+                        children=[
+                            html.Div(id=filters_id),  # filters populated by callback
+                            html.Div(id=tree_id, className="tree-container", style=tree_style),
+                        ],
+                    ),
+                    html.Div(id=info_id, style=self.styles.detail_panel_style,
+                             children=self.get_node_info(None)),
+                ],
+            )
 
         return html.Div(
             id="app-container",
             children=[
+                # Stores holding the (filtered) graph elements and the selected node,
+                # driving the D3 tree renderer (assets/tree.js) and the info panels.
+                dcc.Store(id="elements-cats"),
+                dcc.Store(id="elements-preds"),
+                dcc.Store(id="selected-cats"),
+                dcc.Store(id="selected-preds"),
+                dcc.Store(id="render-signal"),  # clientside render callback target
                 dcc.Tabs(
                     id="tabs",
                     value="tab-1",
                     children=[
-                    dcc.Tab(label="Categories", value="tab-1", children=[
-                        html.Div(
-                            style=tab_content_style,
-                            children=[
-                                # Filters will be populated by callback
-                                html.Div(id="category-filters-container"),
-                                cyto.Cytoscape(
-                                    id="cytoscape-dag-cats",
-                                    layout=self.styles.layout_settings,
-                                    style=cytoscape_style,
-                                    stylesheet=self.styles.main_styling
-                                ),
-                                html.Div(id="node-info-cats", style=self.styles.node_info_div_style)
-                            ])
+                        dcc.Tab(label="Categories", value="tab-1",
+                                children=[tab_body("category-filters-container", "tree-cats", "node-info-cats")]),
+                        dcc.Tab(label="Predicates", value="tab-2",
+                                children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")]),
+                        dcc.Tab(label="Info", value="tab-3", children=self.get_app_info())
                     ]),
-                    dcc.Tab(label="Predicates", value="tab-2", children=[
-                        html.Div(
-                            style=tab_content_style,
-                            children=[
-                                # Filters will be populated by callback
-                                html.Div(id="predicate-filters-container"),
-                                cyto.Cytoscape(
-                                    id="cytoscape-dag-preds",
-                                    layout=self.styles.layout_settings,
-                                    style=cytoscape_style,
-                                    stylesheet=self.styles.main_styling
-                                ),
-                                html.Div(id="node-info-preds", style=self.styles.node_info_div_style)
-                            ])
-                    ]),
-                    dcc.Tab(label="Info", value="tab-3", children=self.get_app_info())
-                ]),
         ])
 
     def get_filter_divs_preds(self, all_predicates: List[str], domains: List[str], ranges: List[str]) -> html.Div:
@@ -222,25 +242,24 @@ class BiolinkDashApp:
 
     def get_app_info(self) -> List[html.Div]:
         """Generates the content for the 'Info' tab."""
-        chip_style_green = self.get_chip_style(
-            self.styles.node_green,
-            opacity=self.styles.regular_opacity,
-            border=f"2px solid {self.styles.node_border_green}",
+        chip_primary = self.get_chip_style(
+            self.styles.accent_tint,
+            border=f"2px solid {self.styles.accent}",
         )
-        chip_style_grey = self.get_chip_style(
+        chip_noncanonical = self.get_chip_style(
+            self.styles.surface,
+            border=f"1.5px dashed {self.styles.noncanonical_border}",
+            text_color=self.styles.noncanonical_text,
+        )
+        chip_grey = self.get_chip_style(
             self.styles.node_grey,
-            opacity=self.styles.regular_opacity,
-            border=f"2px solid {self.styles.node_border_grey}",
+            border=f"1.5px solid {self.styles.node_border_grey}",
+            text_color=self.styles.text_muted,
         )
-        chip_style_green_transparent = self.get_chip_style(
-            self.styles.node_green,
+        chip_mixin = self.get_chip_style(
+            self.styles.accent_tint,
             opacity=self.styles.mixin_opacity,
-            border="0px solid black",
-        )
-        chip_style_grey_transparent = self.get_chip_style(
-            self.styles.node_grey,
-            opacity=self.styles.mixin_opacity,
-            border="0px solid black",
+            border=f"2px solid {self.styles.accent}",
         )
 
         info_content = [
@@ -275,6 +294,18 @@ class BiolinkDashApp:
                             " consortium.",
                         ]
                     ),
+                    html.P(
+                        [
+                            "All Biolink logic is powered by the official ",
+                            html.A(
+                                "Biolink Model Toolkit (bmt)",
+                                href="https://github.com/biolink/biolink-model-toolkit",
+                                target="_blank",
+                                style=self.styles.hyperlink_style,
+                            ),
+                            ", and any Biolink Model version can be loaded on the fly.",
+                        ]
+                    ),
                     html.H4("Using the tabs:"),
                     html.P(
                         """
@@ -285,8 +316,9 @@ class BiolinkDashApp:
                     ),
                     html.P(
                         """
-                        The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model 
-                        (non-canonical predicates are excluded).
+                        The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model.
+                        All predicates are shown; canonical predicates (the Translator-preferred direction of a
+                        relationship) are visually distinguished from non-canonical ones (see the legend below).
                         Use the filters at the top to focus on specific predicates, include/exclude mixin predicates,
                         and to filter predicates based on their domain and range.
                         """
@@ -307,24 +339,28 @@ class BiolinkDashApp:
                     html.H5("Legend:"),
                     html.P(
                         [
-                            html.Div("SomeCategory", style=chip_style_green),
-                            html.Div("some_predicate", style=chip_style_green),
-                            " Default color for categories and predicates.",
+                            html.Div("SomeCategory", style=chip_primary),
+                            html.Div("canonical_predicate", style=chip_primary),
+                            " Categories and canonical predicates are shown with a solid accent border.",
                         ]
                     ),
                     html.P(
                         [
-                            html.Div("some_predicate", style=chip_style_grey),
+                            html.Div("noncanonical_predicate", style=chip_noncanonical),
+                            " Non-canonical predicates (e.g. the non-preferred direction of a "
+                            "relationship) have a dashed, muted border.",
+                        ]
+                    ),
+                    html.P(
+                        [
+                            html.Div("some_predicate", style=chip_grey),
                             " Predicates with a non-specific domain and range (either NamedThing or not provided) are grey.",
                         ]
                     ),
                     html.P(
                         [
-                            html.Div("SomeCategory", style=chip_style_green_transparent),
-                            html.Div(
-                                "some_predicate", style=chip_style_grey_transparent
-                            ),
-                            " Mixins have a faded color.",
+                            html.Div("SomeMixin", style=chip_mixin),
+                            " Mixins are faded.",
                         ]
                     ),
                     html.H4("Search functionality:"),
@@ -437,144 +473,105 @@ class BiolinkDashApp:
 
     def get_node_info(self, selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
         """
-        Generates the HTML content to display information about a selected node
-        in a table format, including attributes and visual chips.
+        Generates the content of the right-hand detail panel for the selected node:
+        a header (id, docs link, status badges), a domain -> range / inverse section
+        for predicates, and description / notes / aliases sections.
 
         Args:
-            selected_nodes: Data provided by Cytoscape for the selected node(s).
-                            Expected to be a list containing a single node's data dict.
-
-        Returns:
-            A list of Dash HTML components or a string message.
+            selected_nodes: A list containing a single selected node's data dict
+                            (``{"id": ..., "attributes": {...}}``), or falsy if none.
         """
-        if not selected_nodes:
-            return "Scroll to zoom in or out. Click on a node to see details."
+        if not selected_nodes or not selected_nodes[0] or "id" not in selected_nodes[0]:
+            return html.Div(
+                "Click a node in the graph to see its details.",
+                style={"color": self.styles.text_muted, "fontSize": "14px",
+                       "lineHeight": "1.5", "marginTop": "4px"},
+            )
 
         node_data = selected_nodes[0]
+        node_id = node_data.get("id")
+        attributes = node_data.get("attributes", {})
+        is_predicate = "domain" in attributes
+        url = f"https://biolink.github.io/biolink-model/{node_id}"
 
-        if node_data and "id" in node_data:
-            node_id = node_data.get("id")
-            attributes = node_data.get("attributes", {})
+        def chip(text: str, color: str, text_color: Optional[str] = None,
+                 chip_value: Any = "value_present") -> html.Div:
+            return html.Div(text, style=self.get_chip_style(
+                color, chip_value=chip_value, text_color=text_color, margin_left="0"))
 
-            # Attributes to display in the table
-            attributes_to_show = {
-                "description": attributes.get("description", "-"),
-                "notes": attributes.get("notes", "-"),
-                "aliases": attributes.get("aliases", "-"),
-            }
-            table_rows = []
-            for key, value in attributes_to_show.items():
-                table_rows.append(
-                    html.Tr(
-                        [
-                            html.Td(
-                                key,
-                                style={
-                                    "text-align": "right",
-                                    "padding-right": "10px",
-                                    "vertical-align": "top",
-                                    "width": "150px",
-                                    "font-family": "monospace",
-                                },
-                            ),
-                            # Ensure value is string for display
-                            html.Td(str(value), style={"width": "auto", "fontSize": "16px"}),
-                        ]
-                    )
-                )
+        # --- Status badges ---
+        badges = []
+        if is_predicate:
+            if attributes.get("is_canonical"):
+                badges.append(chip("canonical", self.styles.chip_canonical, self.styles.chip_canonical_text))
+            else:
+                badges.append(chip("non-canonical", self.styles.chip_grey, self.styles.text_muted))
+        if attributes.get("is_mixin"):
+            badges.append(chip("mixin", self.styles.chip_peach, self.styles.chip_peach_text))
+        if attributes.get("is_symmetric"):
+            badges.append(chip("symmetric", self.styles.chip_purple, self.styles.chip_purple_text))
 
-            # Build the title with ID, docs link, and chips
-            url = f"https://biolink.github.io/biolink-model/{node_id}"
-            title_content = [
-                html.Span(f"{node_id} ",
-                          style={"fontSize": "19px"}),
-                html.A(
-                    "docs",
-                    href=url,
-                    target="_blank",
-                    style={
-                        "color": self.styles.link_blue,
-                        "fontSize": "14px",
-                        "marginLeft": "3px",
-                    },
-                ),
-            ]
-            if attributes.get("is_mixin"):
-                title_content.append(
-                    html.Div(
-                        "mixin",
-                        style=self.get_chip_style(self.styles.chip_peach, circular=True),
-                    )
-                )
-            if attributes.get("is_symmetric"):
-                title_content.append(
-                    html.Div(
-                        "symmetric",
-                        style=self.get_chip_style(self.styles.chip_purple, circular=True),
-                    )
-                )
+        header_children = [
+            html.Div(node_id, style={"fontSize": "20px", "fontWeight": 700,
+                                     "lineHeight": "1.25", "wordBreak": "break-word",
+                                     "color": self.styles.text}),
+            html.A("View in Biolink docs ↗", href=url, target="_blank",
+                   style={**self.styles.hyperlink_style, "fontSize": "13px",
+                          "display": "inline-block", "marginTop": "5px"}),
+        ]
+        if badges:
+            header_children.append(
+                html.Div(badges, style={"display": "flex", "flexWrap": "wrap",
+                                        "gap": "6px", "marginTop": "13px"}))
 
-            # Build domain/range info if applicable (only for predicates)
-            domain_range_info = []
-            if "domain" in attributes: # If domain key exists, range key must exist
-                domain = attributes.get("domain")
-                range_val = attributes.get("range") # 'range' is a keyword, use different var name
-                domain_range_info.extend([
-                    html.Span(
-                        "domain: ",
-                        style={
-                            "marginRight": "1px",
-                            "fontSize": "15px",
-                            "color": "grey",
-                        },
-                    ),
-                    html.Div(
-                        domain if domain else "-",
-                        style=self.get_chip_style(self.styles.chip_green, domain),
-                    ),
-                    html.Span(" → ", style={"margin": "0 5px"}),
-                    html.Span(
-                        "range: ",
-                        style={
-                            "marginLeft": "5px",
-                            "marginRight": "1px",
-                            "fontSize": "15px",
-                            "color": "grey",
-                        },
-                    ),
-                    html.Div(
-                        range_val if range_val else "-",
-                        style=self.get_chip_style(self.styles.chip_green, range_val),
-                    ),
-                ])
+        sections = [html.Div(header_children)]
 
-            # Assemble the final content list
-            content = [
-                html.H4(title_content, style={"margin": "0px 0px 9px 0px"}),
-                html.Div(
-                    domain_range_info,
-                    style={
-                        "display": "flex",
-                        "justifyContent": "center",
-                        "alignItems": "center",
-                        "marginBottom": "5px",
-                        "marginTop": "0px",
-                    },
-                ),
-                html.Table(
-                    table_rows,
-                    style={
-                        "width": "800px",
-                        "margin": "auto",
-                        "textAlign": "left",
-                    },
-                ),
-            ]
-            # Conditionally return content based on whether domain/range info was added
-            return content if domain_range_info else [content[0], content[-1]]
-        else:
-            # Handle cases where selected node data might be invalid
-            return "Error: Selected node data is invalid."
+        # --- Predicate relationship (domain -> range, inverse) ---
+        if is_predicate:
+            domain = attributes.get("domain")
+            range_val = attributes.get("range")
+            relationship = html.Div(
+                [
+                    chip(domain if domain else "—", self.styles.chip_domain, chip_value=domain),
+                    html.Span("→", style={"margin": "0 9px", "color": self.styles.text_muted,
+                                               "fontSize": "16px"}),
+                    chip(range_val if range_val else "—", self.styles.chip_domain, chip_value=range_val),
+                ],
+                style={"display": "flex", "alignItems": "center", "flexWrap": "wrap", "gap": "4px"},
+            )
+            sections.append(self.get_detail_section("Domain → Range", relationship))
+            inverse_val = attributes.get("inverse")
+            if inverse_val:
+                sections.append(self.get_detail_section(
+                    "Inverse predicate", chip(inverse_val, self.styles.chip_grey, self.styles.text)))
+
+        # --- Free-text metadata ---
+        sections.append(self.get_detail_section("Description", self.format_detail_value(attributes.get("description"))))
+        sections.append(self.get_detail_section("Notes", self.format_detail_value(attributes.get("notes"))))
+        sections.append(self.get_detail_section("Aliases", self.format_detail_value(attributes.get("aliases"))))
+
+        return sections
+
+    def get_detail_section(self, label: str, value_component: Any) -> html.Div:
+        """A labeled block in the detail panel (small uppercase label + value)."""
+        return html.Div([
+            html.Div(label, style=self.styles.detail_label_style),
+            value_component,
+        ])
+
+    def format_detail_value(self, value: Any) -> Any:
+        """Renders a metadata value (string, list, or missing) for the detail panel."""
+        if value is None or value == "" or value == []:
+            return html.Div("—", style={**self.styles.detail_value_style,
+                                             "color": self.styles.text_muted})
+        if isinstance(value, list):
+            if len(value) == 1:
+                return html.Div(str(value[0]), style=self.styles.detail_value_style)
+            return html.Ul(
+                [html.Li(str(item), style={"marginBottom": "4px"}) for item in value],
+                style={**self.styles.detail_value_style, "paddingLeft": "18px", "margin": "0"},
+            )
+        return html.Div(str(value), style=self.styles.detail_value_style)
 
     @staticmethod
     def filter_graph_to_certain_nodes(node_ids: Set[str], relevant_elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -737,24 +734,29 @@ class BiolinkDashApp:
         chip_value: Optional[Any] = "value_present", # Use a sentinel instead of None directly
         opacity: Optional[float] = None,
         border: Optional[str] = None,
-        circular: bool = False
+        circular: bool = False,
+        text_color: Optional[str] = None,
+        margin_left: str = "8px",
     ) -> Dict[str, Any]:
         """
         Generates a style dictionary for visual 'chip' elements.
         Grey out chip if value is None or the root category.
         """
         final_color = color
+        final_text_color = text_color or self.styles.text
         if chip_value is None or chip_value == self.root_category:
             final_color = self.styles.chip_grey
+            final_text_color = self.styles.text_muted
 
         chip_style: Dict[str, Any] = {
-            "padding": "2px 5px",
-            "borderRadius": "10px" if circular else "3px",
+            "padding": "3px 10px",
+            "borderRadius": "999px" if circular else "6px",
             "backgroundColor": final_color,
-            "marginLeft": "8px",
-            "fontSize": "15px",
+            "marginLeft": margin_left,
+            "fontSize": "13.5px",
+            "fontWeight": 500,
             "display": "inline-block",
-            "color": "black", # Ensure text visibility
+            "color": final_text_color,
         }
         if opacity is not None:
             chip_style["opacity"] = opacity
@@ -765,10 +767,40 @@ class BiolinkDashApp:
     # --------------------------- Callback Registration --------------------------- #
 
     def register_callbacks(self):
+
+        # Clientside callback: (re)render each D3 tree whenever its elements change or
+        # a tab switch (re)mounts its container. Rendering while a tab is hidden is
+        # harmless — the SVG viewBox auto-fits once the container becomes visible.
+        self.app.clientside_callback(
+            """
+            function(catElements, predElements, tabTrigger) {
+                function draw(containerId, elements, selectedStoreId, graphType) {
+                    function go() {
+                        var el = document.getElementById(containerId);
+                        if (el && window.BiolinkTree) {
+                            window.BiolinkTree.render(containerId, elements || [],
+                                { selectedStoreId: selectedStoreId, graphType: graphType });
+                            return true;
+                        }
+                        return false;
+                    }
+                    if (!go()) { setTimeout(go, 60); setTimeout(go, 200); }
+                }
+                draw("tree-cats", catElements, "selected-cats", "cats");
+                draw("tree-preds", predElements, "selected-preds", "preds");
+                return window.dash_clientside.no_update;
+            }
+            """,
+            Output("render-signal", "data"),
+            Input("elements-cats", "data"),
+            Input("elements-preds", "data"),
+            Input("tab-switch-trigger", "value"),
+        )
+
         # Callbacks to filter graph elements based on dropdown/other selections
 
         @self.app.callback(
-            Output("cytoscape-dag-preds", "elements", allow_duplicate=True),
+            Output("elements-preds", "data", allow_duplicate=True),
             Output("include-mixins-preds", "value"),
             Input("domain-filter", "value"),
             Input("range-filter", "value"),
@@ -804,16 +836,17 @@ class BiolinkDashApp:
                 if any(bm.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return self.filter_graph(elements_predicates,
-                                     selected_domains,
-                                     selected_ranges,
-                                     include_mixins_updated,
-                                     search_nodes,
-                                     bm.predicate_dag,
-                                     bm), include_mixins_updated
+            return (self.filter_graph(elements_predicates,
+                                      selected_domains,
+                                      selected_ranges,
+                                      include_mixins_updated,
+                                      search_nodes,
+                                      bm.predicate_dag,
+                                      bm),
+                    include_mixins_updated)
 
         @self.app.callback(
-            Output("cytoscape-dag-cats", "elements", allow_duplicate=True),
+            Output("elements-cats", "data", allow_duplicate=True),
             Output("include-mixins-cats", "value"),
             Input("include-mixins-cats", "value"),
             Input("node-search-cats", "value"),
@@ -842,18 +875,19 @@ class BiolinkDashApp:
                 if any(bm.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return self.filter_graph(elements_categories,
-                                     [],
-                                     [],
-                                     include_mixins_updated,
-                                     search_nodes,
-                                     bm.category_dag,
-                                     bm), include_mixins_updated
+            return (self.filter_graph(elements_categories,
+                                      [],
+                                      [],
+                                      include_mixins_updated,
+                                      search_nodes,
+                                      bm.category_dag,
+                                      bm),
+                    include_mixins_updated)
 
         # Callback to display node info (Categories Tab)
         @self.app.callback(
             Output("node-info-cats", "children"),
-            Input("cytoscape-dag-cats", "selectedNodeData"),
+            Input("selected-cats", "data"),
         )
         def display_node_info_categories(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
             """Displays information for the selected category node."""
@@ -862,7 +896,7 @@ class BiolinkDashApp:
         # Callback to display node info (Predicates Tab)
         @self.app.callback(
             Output("node-info-preds", "children"),
-            Input("cytoscape-dag-preds", "selectedNodeData"),
+            Input("selected-preds", "data"),
         )
         def display_node_info_predicates(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
             """Displays information for the selected predicate node."""
@@ -885,8 +919,8 @@ class BiolinkDashApp:
 
         # Update graphs, filter options, and links when session version changes
         @self.app.callback(
-            Output('cytoscape-dag-cats', 'elements'),
-            Output('cytoscape-dag-preds', 'elements'),
+            Output('elements-cats', 'data'),
+            Output('elements-preds', 'data'),
             Output('category-filters-container', 'children'),
             Output('predicate-filters-container', 'children'),
             Output('biolink-version-link', 'children'),

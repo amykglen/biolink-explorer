@@ -1,0 +1,17 @@
+[project]
+name = "biolink-explorer"
+version = "0.2.0"
+description = "A Dash web app for visualizing and exploring the Biolink Model category and predicate hierarchies."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bmt",
+    "dash",
+    "dash-cytoscape",
+    "networkx",
+    "requests",
+    "gunicorn",
+]
+
+[tool.uv]
+package = false
