@@ -167,6 +167,47 @@ html, body {
 .dash-dropdown-options .dash-options-list-option-wrapper:hover {
     background: #eef4f2;
 }
+/* Zoom controls overlaid on the graph (bottom-right of each tree container) */
+.bl-zoom-controls {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    background: #fefefc;
+    border: 1px solid #e6e3de;
+    border-radius: 9px;
+    box-shadow: 0 4px 14px -6px rgba(42, 40, 37, 0.28);
+    overflow: hidden;
+    z-index: 4;
+}
+.bl-zoom-btn {
+    width: 34px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #eeece7;
+    color: #2a2825;
+    font-size: 19px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.bl-zoom-btn:last-child {
+    border-bottom: none;
+}
+.bl-zoom-btn:hover {
+    background: #eef4f2;
+    color: #1f6d64;
+}
+.bl-zoom-btn:active {
+    background: #deece9;
+}
+
 /* Inline filter checkboxes ("Show mixins?" etc.): the framework centers the row on
    the text baseline, which floats the checkbox slightly high — center it on the text. */
 .bl-checkbox-filter .dash-options-list-option {

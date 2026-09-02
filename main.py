@@ -175,7 +175,8 @@ class BiolinkDashApp:
             "height": "100%",
         }
         tree_style = {"width": "100%", "height": "100%", "flex": "1 1 auto",
-                      "minHeight": "0", "backgroundColor": self.styles.bg, "overflow": "hidden"}
+                      "minHeight": "0", "backgroundColor": self.styles.bg, "overflow": "hidden",
+                      "position": "relative"}  # anchors the overlaid zoom controls
 
         def tab_body(filters_id, tree_id, info_id):
             return html.Div(

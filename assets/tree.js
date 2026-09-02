@@ -38,8 +38,7 @@
     var LABEL_GAP = 7;      // gap between circle and its label
     var MIN_COL_GAP = 28;   // minimum horizontal gap between adjacent column labels
     var FIT_PAD = 28;
-    var MIN_OPEN_ZOOM = 0.85;  // fallback (big graphs): don't open more zoomed-out than this
-    var FIT_FULL_MIN = 0.28;   // if the whole graph fits at >= this zoom, open showing all of it
+    var MAX_OPEN_ZOOM = 1.15;  // don't open a tiny graph more zoomed-in than this
     var DAGRE = { ranksep: 78, edgesep: 6 };
 
     // Vertical spacing scales with node count: tight for big graphs, airier when a
@@ -217,7 +216,7 @@
             return [[s.cx, s.cy], [t.cx, t.cy]];
         }
 
-        // Bounds (include the label that sticks out of each circle)
+        // Bounds (include the label that sticks out of each circle), over all nodes.
         var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         Object.keys(pos).forEach(function (id) {
             var p = pos[id];
@@ -226,7 +225,6 @@
             minX = Math.min(minX, x0); maxX = Math.max(maxX, x1);
             minY = Math.min(minY, p.cy - 10); maxY = Math.max(maxY, p.cy + 10);
         });
-        var rootCy = pos[roots[0]] ? pos[roots[0]].cy : (minY + maxY) / 2;
         var gW = (maxX - minX) || 1, gH = (maxY - minY) || 1;
 
         // --- SVG ---
@@ -332,27 +330,50 @@
             }
         });
 
-        function applyInitialView() {
+        function applyInitialView(animate) {
             var W = container.clientWidth, H = container.clientHeight;
             if (!W || !H) return false;
-            var kFitAll = Math.min((W - 2 * FIT_PAD) / gW, (H - 2 * FIT_PAD) / gH);
-            // Prefer to open showing the WHOLE graph (width AND height) — this is the nice
-            // default for the unfiltered trees and for filtered subgraphs. But once mixins /
-            // non-canonical are shown the graph is far too tall to fit usefully, so below a
-            // usable fit-zoom we fall back to filling the width, anchored on the root and
-            // never more zoomed-out than MIN_OPEN_ZOOM. Never zoom in past 1.15.
-            var k = (kFitAll >= FIT_FULL_MIN)
-                ? Math.min(1.15, kFitAll)
-                : Math.min(1.15, Math.max((W - 2 * FIT_PAD) / gW, MIN_OPEN_ZOOM));
-            var tx = FIT_PAD - minX * k;
-            var ty = (k * gH <= H - 2 * FIT_PAD) ? (H - k * gH) / 2 - minY * k : H / 2 - rootCy * k;
-            svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+            // Always frame the WHOLE graph, centered. Big graphs (mixins / non-canonical
+            // shown) end up quite zoomed out — that's fine; scroll or the +/- buttons zoom
+            // in. Capped so a tiny graph doesn't open absurdly large.
+            var k = Math.min(MAX_OPEN_ZOOM, (W - 2 * FIT_PAD) / gW, (H - 2 * FIT_PAD) / gH);
+            var tx = (W - k * gW) / 2 - minX * k;
+            var ty = (H - k * gH) / 2 - minY * k;
+            var target = d3.zoomIdentity.translate(tx, ty).scale(k);
+            (animate ? svg.transition().duration(260) : svg).call(zoom.transform, target);
             return true;
         }
         if (!applyInitialView()) {
             var ro = new ResizeObserver(function () { if (applyInitialView()) ro.disconnect(); });
             ro.observe(container);
         }
+
+        // --- Zoom controls (overlaid bottom-right of the graph) ---
+        var controls = document.createElement("div");
+        controls.className = "bl-zoom-controls";
+        function zoomBtn(html, title, onClick) {
+            var b = document.createElement("button");
+            b.type = "button";
+            b.className = "bl-zoom-btn";
+            b.title = title;
+            b.setAttribute("aria-label", title);
+            b.innerHTML = html;
+            // Don't let the press reach the SVG (pan/deselect) underneath.
+            b.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+            b.addEventListener("click", function (e) { e.stopPropagation(); e.preventDefault(); onClick(); });
+            return b;
+        }
+        var FIT_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" ' +
+            'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<polyline points="4 9 4 4 9 4"/><polyline points="15 4 20 4 20 9"/>' +
+            '<polyline points="20 15 20 20 15 20"/><polyline points="9 20 4 20 4 15"/></svg>';
+        controls.appendChild(zoomBtn("+", "Zoom in",
+            function () { svg.call(zoom.scaleBy, 1.35); }));
+        controls.appendChild(zoomBtn("−", "Zoom out",
+            function () { svg.call(zoom.scaleBy, 1 / 1.35); }));
+        controls.appendChild(zoomBtn(FIT_ICON, "Fit to view",
+            function () { applyInitialView(false); }));
+        container.appendChild(controls);
     }
 
     window.BiolinkTree = { render: render };
