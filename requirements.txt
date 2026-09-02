@@ -1,6 +1,0 @@
-dash
-dash-cytoscape
-requests
-pyyaml
-networkx
-gunicorn

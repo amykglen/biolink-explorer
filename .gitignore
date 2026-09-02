@@ -2,3 +2,7 @@
 *pycache*/
 
 *.json
+
+# Local, runtime-only caches
+schema_cache/
+.venv/
