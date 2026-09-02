@@ -35,7 +35,7 @@ DEFAULT_ROOT_ASSOCIATION = "Association"
 ROOT_CATEGORY_ENGLISH = "named thing"
 ROOT_PREDICATE_ENGLISH = "related to"
 ROOT_ASSOCIATION_ENGLISH = "association"
-CORE_NX_PROPERTIES = {"id", "source", "target"}
+CORE_NX_PROPERTIES = {"id", "source", "target", "label"}
 GITHUB_TAGS_URL = "https://api.github.com/repos/biolink/biolink-model/tags"
 GITHUB_RAW_CONTENT_URL_TEMPLATE = "https://raw.githubusercontent.com/biolink/biolink-model/{version_tag}/biolink-model.yaml"
 SCHEMA_CACHE_DIR = f"{SCRIPT_DIR}/schema_cache"
@@ -129,6 +129,7 @@ class BiolinkManager:
         self.predicate_dag_dash = self.convert_to_dash_format(self.predicate_dag)
         self.association_dag = self.build_association_dag()
         self.association_dag_dash = self.convert_to_dash_format(self.association_dag)
+        self.all_enums, self.enums_dash, self.enum_meta = self.build_enum_data()
 
         logging.info(f"Done loading BiolinkManager for version {self.biolink_version}.")
 
@@ -352,6 +353,87 @@ class BiolinkManager:
                 predicate = pred_slot.range
         return subject, predicate, obj
 
+    def build_enum_data(self):
+        """
+        Builds explorer data for the schema's enums (Biolink's controlled value sets, e.g.
+        GeneOrGeneProductOrChemicalEntityAspectEnum — the "aspects" — or KnowledgeLevelEnum).
+
+        For each enum, returns a value-hierarchy graph in Dash format: its permissible values
+        as nodes, linked parent->child by their ``is_a`` relationships (so hierarchical enums
+        render as trees and flat ones as a fan). Also returns per-enum metadata: description,
+        value count, and which slots use the enum as their value set — with qualifier slots
+        flagged, which is how the Enums tab surfaces qualifiers (a qualifier slot like
+        ``subject_aspect_qualifier`` draws its allowed values from an aspect enum).
+
+        Returns (all_enum_names, enums_dash, enum_meta).
+        """
+        logging.info("Building enum data..")
+        sv = self.toolkit.view
+        all_enum_names = sorted(sv.all_enums().keys())
+
+        # Reverse map: enum name -> the slots whose range is that enum (its "consumers").
+        enum_to_slots = {}
+        for slot_name_english in sv.all_slots():
+            slot = sv.get_slot(slot_name_english)
+            if slot and slot.range in sv.all_enums():
+                enum_to_slots.setdefault(slot.range, []).append(slot_name_english)
+
+        enums_dash = {}
+        enum_meta = {}
+        for enum_name in all_enum_names:
+            enum = sv.get_enum(enum_name)
+            permissible_values = enum.permissible_values or {}
+
+            # Node ids are namespaced by enum so that co-displaying several enums (which can
+            # share a value name) never collides. The bare value name is kept as the label.
+            def value_id(pv_name: str) -> str:
+                return f"{enum_name}::{pv_name}"
+
+            graph = nx.DiGraph()
+            for pv_name, pv in permissible_values.items():
+                node_id = value_id(pv_name)
+                self.add_node_if_doesnt_exist(graph, node_id)
+                node = graph.nodes[node_id]
+                node["label"] = pv_name
+                node["enum_name"] = enum_name
+                if getattr(pv, "description", None):
+                    node["description"] = pv.description
+                meaning = getattr(pv, "meaning", None)
+                if meaning:
+                    node["meaning"] = meaning
+                # A permissible value can nest under another via is_a (within the same enum).
+                parent = getattr(pv, "is_a", None)
+                if parent and parent in permissible_values:
+                    node["parent_value"] = parent  # bare label (for the detail panel)
+                    graph.add_edge(value_id(parent), node_id)
+
+            # Add a synthetic root labeled with the enum name, linking to every top-level
+            # value. This ties the values into one tree (instead of a scattered forest) and
+            # gives a clickable "home" node whose detail is the enum overview.
+            if permissible_values:
+                top_level = [n for n in graph.nodes() if graph.in_degree(n) == 0]
+                self.add_node_if_doesnt_exist(graph, enum_name)
+                graph.nodes[enum_name]["is_enum_root"] = True
+                graph.nodes[enum_name]["enum_name"] = enum_name
+                graph.nodes[enum_name]["label"] = enum_name
+                for node_id in top_level:
+                    graph.add_edge(enum_name, node_id)
+
+            enums_dash[enum_name] = self.convert_to_dash_format(graph)
+
+            consumers = [
+                {"name": sentencecase_to_snakecase(slot_name_english),
+                 "is_qualifier": "qualifier" in slot_name_english.lower()}
+                for slot_name_english in sorted(enum_to_slots.get(enum_name, []))
+            ]
+            enum_meta[enum_name] = {
+                "description": enum.description,
+                "value_count": len(permissible_values),
+                "used_by": consumers,
+            }
+
+        return all_enum_names, enums_dash, enum_meta
+
     @staticmethod
     def record_common_metadata(node: dict, element) -> None:
         """Records description/notes/aliases metadata shared by categories and predicates."""
@@ -369,7 +451,7 @@ class BiolinkManager:
         graph_type = "predicates" if self.root_predicate in nx_dag.nodes() else "categories"
         dict_dag = json_graph.node_link_data(nx_dag, edges="edges")
         dash_nodes = [{"data": {"id": node["id"],
-                                "label": node["id"],
+                                "label": node.get("label") or node["id"],
                                 "attributes": self.extract_attributes(node)},
                        "classes": self.get_node_classes(node, graph_type)}
                       for node in dict_dag["nodes"]]
@@ -387,6 +469,8 @@ class BiolinkManager:
         classes = set()
         if dag_node.get("is_mixin"):
             classes.add("mixin")
+        if dag_node.get("is_enum_root"):
+            classes.add("enumroot")
         if graph_type == "predicates":
             classes.add("canonical" if dag_node.get("is_canonical") else "noncanonical")
             if ((not dag_node.get("domain") or dag_node["domain"] == self.root_category) and

@@ -130,7 +130,12 @@
     // when starting to pan/drag the graph, not only on a clean click).
     document.addEventListener("mousedown", function (e) {
         var inside = e.target.closest && e.target.closest(".bl-ms-wrapper");
-        if (!inside) closeAll(null);
+        if (!inside) {
+            // Note when an outside press actually dismisses an open dropdown, so the graph's
+            // background-click handler can skip clearing the selection for that same click.
+            if (document.querySelector(".bl-ms-wrapper.bl-ms-open")) window.__blMsClosedAt = Date.now();
+            closeAll(null);
+        }
     }, true);
 
     document.addEventListener("input", function (e) {

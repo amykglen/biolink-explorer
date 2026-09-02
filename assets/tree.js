@@ -66,6 +66,9 @@
         var color = mixin ? P.mixin : P.regular;
         var s = { fill: color, stroke: color, sw: 1.5, r: R, text: P.text, ring: false, searchRing: false };
         if (has("noncanonical")) { s.fill = "none"; s.sw = 1.75; }  // hollow
+        // The Enums tab's synthetic root (labeled with the enum name): a darker, emphasized
+        // node so it reads as the "home" you click to get the enum overview back.
+        if (has("enumroot")) { s.fill = P.regular_dark; s.stroke = P.regular_dark; s.text = P.regular_dark; }
         if (has("searched")) {
             // A search match must NOT recolor the dot — its color (mixin) and fill
             // (canonical) both carry meaning. Mark it with an outer rust ring + a rust,
@@ -253,6 +256,9 @@
             var p = pos[id], internal = p.internal;
             var base = nodeStyle(it.classes, false);
             var state = { sel: false, hover: false };
+            // Honor an externally set selection (e.g. auto-featuring an enum's root node),
+            // so it shows as selected without the user having clicked it.
+            if (opts.selectedId && id === opts.selectedId) state.sel = true;
             var ng = nodeLayer.append("g").attr("transform", "translate(" + p.cx + "," + p.cy + ")")
                 .style("cursor", "pointer");
             var searchRing = ng.append("circle").attr("fill", "none").attr("stroke", P.highlight)
@@ -287,6 +293,8 @@
                 label.attr("fill", s.text).attr("font-weight", weight).attr("x", internal ? -off : off);
             }
             paint();
+            // Track a pre-selected node so a later click / background-click clears it correctly.
+            if (state.sel) { current.state = state; current.paint = paint; }
 
             ng.on("mouseover", function () { state.hover = true; paint(); });
             ng.on("mouseout", function () { state.hover = false; paint(); });
@@ -341,6 +349,9 @@
 
         // Clicking empty graph area (not a node, not a pan) clears the selection.
         svg.on("click", function () {
+            // Exception: if this click just dismissed an open dropdown, don't also clear the
+            // selection — dismissing a dropdown shouldn't wipe the detail panel.
+            if (window.__blMsClosedAt && Date.now() - window.__blMsClosedAt < 300) return;
             if (didPan) { didPan = false; return; }
             if (current.state) { current.state.sel = false; current.paint(); current.state = null; current.paint = null; }
             if (opts.selectedStoreId && window.dash_clientside && window.dash_clientside.set_props) {

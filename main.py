@@ -6,7 +6,7 @@ import urllib.parse
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
-from dash import Dash, Input, Output, dcc, html, State, no_update
+from dash import Dash, Input, Output, dcc, html, State, no_update, ctx
 
 from biolink_manager import BiolinkManager, get_biolink_github_tags
 
@@ -182,41 +182,46 @@ class BiolinkDashApp:
                       "position": "relative"}  # anchors the overlaid zoom controls
 
         def tab_body(filters_id, tree_id, info_id):
-            # Which filter Stores this tab's "Filtered view" banner watches / can clear.
-            if "cats" in tree_id:
-                clear_stores = ["node-search-cats"]
-            elif "assoc" in tree_id:
-                clear_stores = ["node-search-assoc"]
-            else:
-                clear_stores = ["node-search-preds", "domain-filter", "range-filter"]
-            filter_banner = html.Div(
-                [
-                    html.Span("Filtered view", className="bl-filter-banner-text"),
-                    html.Button("Clear filters", className="bl-filter-clear",
-                                **{"data-clear": ",".join(clear_stores)}),
-                ],
-                id=f"{tree_id}--filterbanner", className="bl-filter-banner",
-            )
-            # "Hidden content" pills (one per hideable type), stacked bottom-left. Each has its
-            # own Show button that flips just its checkbox.
-            mixin_cb = ("include-mixins-cats" if "cats" in tree_id
-                        else "include-mixins-assoc" if "assoc" in tree_id
-                        else "include-mixins-preds")
-
-            def hidden_pill_div(kind, reveal_cb):
-                return html.Div(
+            # The Enums tab has no mixin/non-canonical/search filtering, so it gets neither
+            # the "Filtered view" banner nor the "hidden content" pills — just the tree.
+            is_enums = "enums" in tree_id
+            overlays = []
+            if not is_enums:
+                # Which filter Stores this tab's "Filtered view" banner watches / can clear.
+                if "cats" in tree_id:
+                    clear_stores = ["node-search-cats"]
+                elif "assoc" in tree_id:
+                    clear_stores = ["node-search-assoc"]
+                else:
+                    clear_stores = ["node-search-preds", "domain-filter", "range-filter"]
+                filter_banner = html.Div(
                     [
-                        html.Span("", id=f"{tree_id}--hiddencount-{kind}", className="bl-hidden-badge-text"),
-                        html.Button("Show", className="bl-hidden-badge-show"),
+                        html.Span("Filtered view", className="bl-filter-banner-text"),
+                        html.Button("Clear filters", className="bl-filter-clear",
+                                    **{"data-clear": ",".join(clear_stores)}),
                     ],
-                    id=f"{tree_id}--hiddenbadge-{kind}", className="bl-hidden-badge",
-                    **{"data-reveal": reveal_cb},
+                    id=f"{tree_id}--filterbanner", className="bl-filter-banner",
                 )
+                # "Hidden content" pills (one per hideable type), along the bottom-left. Each
+                # has its own Show button that flips just its checkbox.
+                mixin_cb = ("include-mixins-cats" if "cats" in tree_id
+                            else "include-mixins-assoc" if "assoc" in tree_id
+                            else "include-mixins-preds")
 
-            pills = [hidden_pill_div("mixins", mixin_cb)]
-            if "preds" in tree_id:
-                pills.append(hidden_pill_div("noncanon", "include-noncanonical-preds"))
-            hidden_badge = html.Div(pills, className="bl-hidden-badges")
+                def hidden_pill_div(kind, reveal_cb):
+                    return html.Div(
+                        [
+                            html.Span("", id=f"{tree_id}--hiddencount-{kind}", className="bl-hidden-badge-text"),
+                            html.Button("Show", className="bl-hidden-badge-show"),
+                        ],
+                        id=f"{tree_id}--hiddenbadge-{kind}", className="bl-hidden-badge",
+                        **{"data-reveal": reveal_cb},
+                    )
+
+                pills = [hidden_pill_div("mixins", mixin_cb)]
+                if "preds" in tree_id:
+                    pills.append(hidden_pill_div("noncanon", "include-noncanonical-preds"))
+                overlays = [filter_banner, html.Div(pills, className="bl-hidden-badges")]
             return html.Div(
                 style=tab_row_style,
                 children=[
@@ -230,8 +235,7 @@ class BiolinkDashApp:
                                        "display": "flex"},
                                 children=[
                                     html.Div(id=tree_id, className="tree-container", style=tree_style),
-                                    filter_banner,
-                                    hidden_badge,
+                                    *overlays,
                                 ],
                             ),
                         ],
@@ -267,9 +271,12 @@ class BiolinkDashApp:
                         dcc.Store(id="elements-cats"),
                         dcc.Store(id="elements-preds"),
                         dcc.Store(id="elements-assoc"),
+                        dcc.Store(id="elements-enums"),
                         dcc.Store(id="selected-cats"),
                         dcc.Store(id="selected-preds"),
                         dcc.Store(id="selected-assoc"),
+                        dcc.Store(id="selected-enums"),
+                        dcc.Store(id="enum-select-prev", data=[]),  # prior enum selection (to spot the newly-added one)
                         dcc.Store(id="render-signal"),  # clientside render callback target
                         dcc.Tabs(
                             id="tabs",
@@ -284,7 +291,10 @@ class BiolinkDashApp:
                                         children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")]),
                                 dcc.Tab(label="Associations", value="tab-3",
                                         style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
-                                        children=[tab_body("association-filters-container", "tree-assoc", "node-info-assoc")])
+                                        children=[tab_body("association-filters-container", "tree-assoc", "node-info-assoc")]),
+                                dcc.Tab(label="Enums", value="tab-4",
+                                        style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
+                                        children=[tab_body("enum-filters-container", "tree-enums", "node-info-enums")])
                             ]),
                     ],
                 ),
@@ -344,6 +354,27 @@ class BiolinkDashApp:
             [
                 self.get_search_filter("node-search-assoc", all_associations or []),
                 self.get_checkbox_filter("include-mixins-assoc", "Show mixins?", show_by_default=False),
+            ],
+            style=self.styles.filters_wrapper_style,
+        )
+
+    def get_filter_divs_enums(self, all_enums: List[str], default_enum: Optional[str]) -> html.Div:
+        """
+        Generates the filter controls Div for the Enums tab: a searchable multi-select of
+        enums. Selecting several shows their value trees side by side (each with its own root).
+        """
+        return html.Div(
+            [
+                html.Div(
+                    [
+                        html.Label("Select enum(s)", style=self.styles.filter_label_style),
+                        self.get_multiselect(
+                            "enum-select", all_enums or [], "Select enums…",
+                            initial_value=[default_enum] if default_enum else [],
+                            popup_width="470px"),
+                    ],
+                    style={"width": "400px"},
+                ),
             ],
             style=self.styles.filters_wrapper_style,
         )
@@ -589,6 +620,8 @@ class BiolinkDashApp:
         node_data = selected_nodes[0]
         node_id = node_data.get("id")
         attributes = node_data.get("attributes", {})
+        if graph_type == "enums":
+            return self.get_enum_value_info(node_data)
         is_predicate = "domain" in attributes
         url = f"https://biolink.github.io/biolink-model/{node_id}"
 
@@ -707,6 +740,111 @@ class BiolinkDashApp:
                 chip(opposite_val, self.styles.chip_grey, self.styles.text) if opposite_val
                 else self.format_detail_value(None)))
 
+        return sections
+
+    @staticmethod
+    def enum_root_selection(enum_name: str) -> List[Dict[str, Any]]:
+        """Selection payload for an enum's synthetic root node (matches what tree.js emits on
+        click), used to auto-select it in the graph and drive the detail panel."""
+        return [{"id": enum_name, "label": enum_name,
+                 "attributes": {"is_enum_root": True, "enum_name": enum_name}}]
+
+    def get_enum_value_info(self, node_data: Dict[str, Any]) -> Any:
+        """Detail panel for a single permissible value of an enum (Enums tab)."""
+        label = node_data.get("label") or node_data.get("id")
+        attributes = node_data.get("attributes", {})
+        enum_name = attributes.get("enum_name")
+        url = f"https://biolink.github.io/biolink-model/{enum_name}/" if enum_name else None
+
+        def chip(text: str, color: str, text_color: Optional[str] = None,
+                 chip_value: Any = "value_present") -> html.Div:
+            return html.Div(text, style=self.get_chip_style(
+                color, chip_value=chip_value, text_color=text_color, margin_left="0"))
+
+        title_children = [
+            html.Div(label, style={"fontSize": "17px", "fontWeight": 700, "lineHeight": "1.25",
+                                   "wordBreak": "break-word", "color": self.styles.text}),
+        ]
+        if url:
+            title_children.append(
+                html.A("View enum in Biolink docs ↗", href=url, target="_blank",
+                       style={**self.styles.hyperlink_style, "fontSize": "13px",
+                              "display": "inline-block", "marginTop": "5px"}))
+        sections = [html.Div(title_children, style={"minWidth": "0"})]
+
+        if enum_name:
+            sections.append(self.get_detail_section(
+                "Value of", chip(enum_name, self.styles.chip_grey, self.styles.text)))
+
+        # Parent value is kept (adds context); children are omitted (already visible in the tree).
+        parent = attributes.get("parent_value")
+        sections.append(self.get_detail_section(
+            "Parent value",
+            chip(parent, self.styles.chip_domain, chip_value=parent) if parent
+            else self.format_detail_value(None)))
+
+        sections.append(self.get_detail_section(
+            "Description", self.format_detail_value(attributes.get("description"))))
+
+        meaning = attributes.get("meaning")
+        if meaning:
+            sections.append(self.get_detail_section(
+                "Meaning (CURIE)", self.format_detail_value(meaning)))
+        return sections
+
+    def get_enum_overview(self, enum_name: Optional[str], bm: BiolinkManager) -> Any:
+        """
+        Default ("home") detail panel for the Enums tab, shown when an enum is selected but
+        no value is clicked: the enum's description, its value count, and — the qualifier
+        angle — which slots use it as their value set (qualifier slots flagged).
+        """
+        meta = getattr(bm, "enum_meta", {}).get(enum_name) if enum_name else None
+        if not meta:
+            return html.Div(
+                "Select an enum to see its details.",
+                style={"color": self.styles.text_muted, "fontSize": "14px",
+                       "lineHeight": "1.5", "marginTop": "4px"},
+            )
+
+        url = f"https://biolink.github.io/biolink-model/{enum_name}/"
+        title_block = html.Div(
+            [
+                html.Div(enum_name, style={"fontSize": "17px", "fontWeight": 700, "lineHeight": "1.25",
+                                           "wordBreak": "break-word", "color": self.styles.text}),
+                html.A("View in Biolink docs ↗", href=url, target="_blank",
+                       style={**self.styles.hyperlink_style, "fontSize": "13px",
+                              "display": "inline-block", "marginTop": "5px"}),
+            ],
+            style={"minWidth": "0"},
+        )
+        sections = [title_block]
+
+        count = meta["value_count"]
+        sections.append(self.get_detail_section(
+            "Value set",
+            html.Div(f"{count} permissible value" + ("" if count == 1 else "s"),
+                     style=self.styles.detail_value_style)))
+
+        used_by = meta["used_by"]
+        if used_by:
+            def slot_row(consumer: Dict[str, Any]) -> html.Div:
+                row = [html.Span(consumer["name"],
+                                 style={"fontSize": "13px", "color": self.styles.text})]
+                if consumer["is_qualifier"]:
+                    row.append(html.Span("qualifier", style={
+                        "backgroundColor": self.styles.chip_purple,
+                        "color": self.styles.chip_purple_text,
+                        "fontSize": "11px", "fontWeight": 600,
+                        "padding": "1px 8px", "borderRadius": "999px"}))
+                return html.Div(row, style={"display": "flex", "alignItems": "center",
+                                            "gap": "8px", "padding": "4px 0"})
+            value_block = html.Div([slot_row(c) for c in used_by])
+        else:
+            value_block = self.format_detail_value(None)
+        sections.append(self.get_detail_section("Used as the value of", value_block))
+
+        sections.append(self.get_detail_section(
+            "Description", self.format_detail_value(meta["description"])))
         return sections
 
     def get_detail_section(self, label: str, value_component: Any) -> html.Div:
@@ -966,13 +1104,22 @@ class BiolinkDashApp:
         type-to-filter and the trigger's display text are wired up in assets/msdropdown.js and
         a small clientside callback (see register_callbacks).
         """
+        # Pre-select the initial value(s) server-side so the control paints correctly on mount
+        # (the clientside sync callback has prevent_initial_call, so it won't do it for us).
+        if multi:
+            selected_set = set(initial_value) if initial_value else set()
+            display_text = ", ".join(initial_value) if initial_value else None
+        else:
+            selected_set = {initial_value} if initial_value else set()
+            display_text = initial_value if initial_value else None
         # Options are plain clickable rows (NOT a dcc.Checklist / dcc.Dropdown — both
         # virtualize their option list, which is the whole source of the popup-height bug).
         # 150-ish rows render fine as plain DOM. Selection lives in the dcc.Store below.
         rows = [
             html.Div(
                 [html.Span(className="bl-ms-check"), html.Span(name, className="bl-ms-optlabel")],
-                className="bl-ms-option", **{"data-value": name},
+                className="bl-ms-option" + (" bl-ms-selected" if name in selected_set else ""),
+                **{"data-value": name},
             )
             for name in sorted(option_names)
         ]
@@ -981,7 +1128,7 @@ class BiolinkDashApp:
                 # Trigger / control: shows the current selection (or the placeholder via CSS)
                 html.Div(
                     [
-                        html.Span(initial_value if (not multi and initial_value) else None,
+                        html.Span(display_text,
                                   id=f"{filter_id}--display", className="bl-ms-display",
                                   **{"data-placeholder": placeholder}),
                         html.Span("×", className="bl-ms-clear", title="Clear selection",
@@ -1008,10 +1155,11 @@ class BiolinkDashApp:
                 # The selection — the component the callbacks read via its "data" prop. For a
                 # multi-select that's the list of values (same shape the old dropdown's "value"
                 # had); for a single-select it's the one selected value (a string).
-                dcc.Store(id=filter_id, data=(initial_value if not multi else [])),
+                dcc.Store(id=filter_id, data=(initial_value if not multi else (initial_value or []))),
             ],
             className="bl-ms-wrapper" + (" bl-ms-right" if right_align else "")
-                      + ("" if multi else " bl-ms-single"),
+                      + ("" if multi else " bl-ms-single")
+                      + (" bl-ms-has-value" if selected_set else ""),
             style={"--bl-ms-popup-w": popup_width},
             **{"data-store": filter_id},
         )
@@ -1061,22 +1209,25 @@ class BiolinkDashApp:
         # harmless — the SVG viewBox auto-fits once the container becomes visible.
         self.app.clientside_callback(
             """
-            function(catElements, predElements, assocElements, tabTrigger) {
-                function draw(containerId, elements, selectedStoreId, graphType) {
+            function(catElements, predElements, assocElements, enumElements, tabTrigger, enumSel) {
+                function draw(containerId, elements, selectedStoreId, graphType, selectedId) {
                     function go() {
                         var el = document.getElementById(containerId);
                         if (el && window.BiolinkTree) {
                             window.BiolinkTree.render(containerId, elements || [],
-                                { selectedStoreId: selectedStoreId, graphType: graphType });
+                                { selectedStoreId: selectedStoreId, graphType: graphType,
+                                  selectedId: selectedId || null });
                             return true;
                         }
                         return false;
                     }
                     if (!go()) { setTimeout(go, 60); setTimeout(go, 200); }
                 }
+                var enumSelId = (enumSel && enumSel[0] && enumSel[0].id) ? enumSel[0].id : null;
                 draw("tree-cats", catElements, "selected-cats", "cats");
                 draw("tree-preds", predElements, "selected-preds", "preds");
                 draw("tree-assoc", assocElements, "selected-assoc", "assoc");
+                draw("tree-enums", enumElements, "selected-enums", "enums", enumSelId);
                 return window.dash_clientside.no_update;
             }
             """,
@@ -1084,7 +1235,9 @@ class BiolinkDashApp:
             Input("elements-cats", "data"),
             Input("elements-preds", "data"),
             Input("elements-assoc", "data"),
+            Input("elements-enums", "data"),
             Input("tab-switch-trigger", "value"),
+            State("selected-enums", "data"),
         )
 
         # Callbacks to filter graph elements based on dropdown/other selections
@@ -1266,6 +1419,55 @@ class BiolinkDashApp:
             """Displays information for the selected association node."""
             return self.get_node_info(selected_nodes, "assoc")
 
+        # Enums tab: load the selected enums' value trees (concatenated — each enum keeps its
+        # own root, so multiple selections render side by side). Also auto-select the
+        # most-recently-added enum's root node (else the sole remaining one) so it shows as
+        # selected in the graph and its overview fills the detail panel.
+        @self.app.callback(
+            Output("elements-enums", "data"),
+            Output("selected-enums", "data"),
+            Output("enum-select-prev", "data"),
+            Input("enum-select", "data"),
+            State("enum-select-prev", "data"),
+            State("session-biolink-version-store", "data"),
+            prevent_initial_call=True,
+        )
+        def load_enum_view(enum_names: Optional[List[str]], prev_names: Optional[List[str]],
+                           version_tag: str) -> Tuple[List[Dict[str, Any]], Any, List[str]]:
+            version_data = self.get_biolink_data_for_version(version_tag)
+            bm = version_data.get("bm") if version_data else None
+            names = enum_names if isinstance(enum_names, list) else ([enum_names] if enum_names else [])
+            enums_dash = bm.enums_dash if bm is not None else {}
+            elements: List[Dict[str, Any]] = []
+            for name in names:
+                elements.extend(enums_dash.get(name, []))
+            # Feature (and select in the graph) the most-recently-added enum's root.
+            prev = prev_names if isinstance(prev_names, list) else []
+            added = [name for name in names if name not in set(prev)]
+            feature = added[-1] if added else (names[0] if len(names) == 1 else None)
+            selected = self.enum_root_selection(feature) if feature else None
+            return elements, selected, names
+
+        # Enums tab detail panel, driven entirely by the current selection:
+        #  - an enum's root node -> that enum's overview
+        #  - a value node -> that value's details
+        #  - nothing selected -> the generic prompt.
+        @self.app.callback(
+            Output("node-info-enums", "children"),
+            Input("selected-enums", "data"),
+            State("session-biolink-version-store", "data"),
+            prevent_initial_call=True,
+        )
+        def display_enum_panel(selected_nodes: Optional[List[Dict[str, Any]]], version_tag: str) -> Any:
+            version_data = self.get_biolink_data_for_version(version_tag)
+            bm = version_data.get("bm") if version_data else None
+            if bm is not None and selected_nodes and selected_nodes[0] and selected_nodes[0].get("id"):
+                node = selected_nodes[0]
+                if node.get("attributes", {}).get("is_enum_root"):
+                    return self.get_enum_overview(node["id"], bm)
+                return self.get_node_info([node], "enums")
+            return self.get_node_info(None)
+
         # "Filter graph to this node" buttons: add the selected node to the search dropdown
         def add_selected_to_search(n_clicks, selected_nodes, current_search):
             # Guard against the callback firing when the button is first rendered
@@ -1313,7 +1515,7 @@ class BiolinkDashApp:
         # of the option rows. Driven off the Store so it reflects programmatic changes too
         # (e.g. the "focus the graph on this item" button).
         for search_id in ["node-search-cats", "node-search-preds", "node-search-assoc",
-                          "domain-filter", "range-filter"]:
+                          "domain-filter", "range-filter", "enum-select"]:
             self.app.clientside_callback(
                 f"""
                 function(data) {{
@@ -1385,17 +1587,18 @@ class BiolinkDashApp:
             Output('category-filters-container', 'children'),
             Output('predicate-filters-container', 'children'),
             Output('association-filters-container', 'children'),
+            Output('enum-filters-container', 'children'),
             Output('biolink-version-link', 'children'),
             Input('session-biolink-version-store', 'data') # Triggered by store change
         )
         def update_ui_for_version(version_tag):
             if not version_tag:
-                return [], [], [], [], [], [], html.A() # Handle initial or error state
+                return [], [], [], [], [], [], [], html.A() # Handle initial or error state
 
             # Get data from cache for the session's version
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data: # Handle case where loading failed
-                 return [], [], [], [], [], [], html.A("Error loading version", href="#")
+                 return [], [], [], [], [], [], [], html.A("Error loading version", href="#")
 
             # Generate filter divs using data for this version
             cat_filters = self.get_filter_divs_cats(version_data['all_categories'])
@@ -1403,6 +1606,14 @@ class BiolinkDashApp:
                                                       version_data['domains'],
                                                       version_data['ranges'])
             assoc_filters = self.get_filter_divs_assoc(version_data['all_associations'])
+
+            # Enums tab picker (default to the aspect enum — the richest, most illustrative).
+            bm = version_data.get('bm')
+            all_enums = bm.all_enums if bm else []
+            default_enum = ("GeneOrGeneProductOrChemicalEntityAspectEnum"
+                            if "GeneOrGeneProductOrChemicalEntityAspectEnum" in all_enums
+                            else (all_enums[0] if all_enums else None))
+            enum_filters = self.get_filter_divs_enums(all_enums, default_enum)
 
             # Generate version link
             # Use actual version from bm instance if possible, otherwise use tag
@@ -1426,6 +1637,7 @@ class BiolinkDashApp:
                     cat_filters,
                     pred_filters,
                     assoc_filters,
+                    enum_filters,
                     version_link)
 
         # Callback to update the hidden trigger on tab switch
