@@ -10,3 +10,195 @@ html, body {
     display: flex;
     flex-direction: column;
 }
+
+/* ---- Dropdowns & checklists (dcc.Dropdown / dcc.Checklist, Dash 4 native) ---- */
+/* Accent tokens: teal #2d8f83 (dark #1f6d64, tint #e4f0ee); neutral border #e6e3de */
+
+/* Font sizing */
+.dash-dropdown,
+.dash-dropdown-trigger,
+.dash-dropdown-placeholder,
+.dash-dropdown-value,
+.dash-dropdown-value-item,
+.dash-options-list,
+.dash-options-list-option,
+.dash-options-list-option-text,
+.dash-input-element,
+.dash-dropdown input {
+    font-size: 13px;
+}
+
+/* Remove the default (navy) outer border; keep a single warm border on the trigger */
+.dash-dropdown {
+    border: none;
+}
+.dash-dropdown-trigger {
+    min-height: 30px;
+    border: 1px solid #e6e3de;
+    border-radius: 6px;
+    background: #fefefc;
+    padding: 1px 6px;
+}
+.dash-dropdown-trigger:hover {
+    border-color: #7bbcb4;
+}
+.dash-dropdown:focus-within .dash-dropdown-trigger,
+.dash-dropdown-trigger:focus,
+.dash-dropdown-trigger:focus-within {
+    border-color: #2d8f83;
+    box-shadow: 0 0 0 2px #e4f0ee;
+    outline: none;
+}
+/* Kill the fleeting native (purple) focus ring on the trigger container */
+.dash-dropdown-grid-container,
+.dash-dropdown-trigger,
+.dash-dropdown-trigger:active,
+.dash-dropdown-trigger:focus-visible,
+.dash-dropdown-grid-container:focus,
+.dash-dropdown-grid-container:focus-visible,
+.dash-dropdown-grid-container:active {
+    outline: none !important;
+}
+.dash-dropdown-placeholder {
+    color: #a29a8d;
+}
+/* Value pill: only the MULTI-select dropdowns get the chip background (with padding);
+   single-select (e.g. the version picker) shows plain text. */
+.bl-multi-dropdown .dash-dropdown-value-item {
+    background: #e4f0ee;
+    color: #2a2825;
+    border-radius: 5px;
+    padding: 1px 8px;
+    margin: 1px 3px 1px 0;
+}
+/* The in-menu search magnifier icon (default purple) -> muted */
+.dash-dropdown-search-icon,
+.dash-dropdown-search-icon * {
+    color: #a29a8d !important;
+    stroke: #a29a8d !important;
+    fill: none !important;
+}
+
+/* The in-menu search box is .dash-dropdown-search-container (default purple border) */
+.dash-dropdown-search-container {
+    border: 1px solid #e6e3de !important;
+    border-radius: 5px;
+    outline: none !important;
+}
+.dash-dropdown-search-container:focus-within {
+    border-color: #2d8f83 !important;
+    box-shadow: 0 0 0 2px #e4f0ee;
+    outline: none !important;
+}
+.dash-dropdown-search {
+    font-size: 13px;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* Search box inside the menu — the navy border lives on .dash-input-container */
+.dash-input,
+.dash-input-container {
+    border: 1px solid #e6e3de !important;
+    border-radius: 5px;
+    background: #fefefc;
+}
+.dash-input:focus-within,
+.dash-input-container:focus-within {
+    border-color: #2d8f83 !important;
+    box-shadow: 0 0 0 2px #e4f0ee;
+}
+.dash-input-element {
+    border: none;
+}
+/* Kill the browser's native (purple) focus ring on every dropdown input/target; the
+   teal box-shadow on .dash-input-container is our focus indicator instead. */
+.dash-input,
+.dash-input-container,
+.dash-input-element,
+.dash-input-element:focus,
+.dash-input-element:focus-visible,
+.dash-input-container:focus-visible,
+.dash-input:focus-visible,
+.dash-dropdown-focus-target,
+.dash-dropdown-focus-target:focus,
+.dash-dropdown-focus-target:focus-visible {
+    outline: none !important;
+    box-shadow: none;
+}
+.dash-input:focus-within,
+.dash-input-container:focus-within {
+    border-color: #2d8f83 !important;
+    box-shadow: 0 0 0 2px #e4f0ee !important;
+}
+
+/* Option rows (dropdown menus AND standalone checklists) — warm text, teal checkbox */
+.dash-options-list-option,
+.dash-options-list-option-text,
+.dash-options-list-option:hover,
+.dash-options-list-option:hover .dash-options-list-option-text {
+    color: #2a2825;
+}
+.dash-options-list-option-checkbox {
+    accent-color: #2d8f83;
+    outline: none;
+}
+.dash-options-list-option-checkbox:focus-visible {
+    outline: 2px solid #2d8f83;
+}
+
+/* Popup menu — the open dropdown list has the extra class .dash-dropdown-options and
+   is portaled outside .dash-dropdown, so target that class directly. (The standalone
+   "Show mixins?" checklist is .dash-checklist and is unaffected.) Make it taller. */
+/* The content wraps the search box + options and carries the popup box; it has an
+   inline max-height (~200px) from Dash that clips it — override so it doesn't clip. */
+.dash-dropdown-content {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 1px solid #e6e3de;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px -12px rgba(42, 40, 37, 0.3);
+    background: #fefefc;
+}
+/* The options list is the scroll area — make it tall enough to show ~12 rows. */
+.dash-dropdown-options {
+    max-height: 360px !important;
+    overflow-y: auto !important;
+}
+.dash-dropdown-options .dash-options-list-option-wrapper {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+.dash-dropdown-options .dash-options-list-option:hover,
+.dash-dropdown-options .dash-options-list-option-wrapper:hover {
+    background: #eef4f2;
+}
+/* Filter (funnel) icon button in the detail panel — hover/active feedback */
+.filter-icon-btn {
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.filter-icon-btn:hover {
+    background: #d7e9e5 !important;
+    border-color: #2d8f83 !important;
+}
+.filter-icon-btn:active {
+    background: #c8e2dc !important;
+}
+
+/* Header info-icon button */
+.header-icon-btn {
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.header-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.18) !important;
+    border-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Modal close button */
+.modal-close-btn {
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.modal-close-btn:hover {
+    background: #efeee9 !important;
+    color: #2a2825 !important;
+}

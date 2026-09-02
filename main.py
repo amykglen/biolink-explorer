@@ -2,10 +2,11 @@ import copy
 import logging
 import os
 import sys
+import urllib.parse
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
-from dash import Dash, Input, Output, dcc, html, State
+from dash import Dash, Input, Output, dcc, html, State, no_update
 
 from biolink_manager import BiolinkManager, get_biolink_github_tags
 
@@ -32,7 +33,14 @@ class BiolinkDashApp:
 
         self.styles: Styles = Styles()
 
-        self.app: Dash = Dash(__name__, title="Biolink Explorer", suppress_callback_exceptions=True)
+        self.app: Dash = Dash(
+            __name__,
+            title="Biolink Explorer",
+            suppress_callback_exceptions=True,
+            external_stylesheets=[
+                "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            ],
+        )
         self.app.layout = self.get_layout()
         self.register_callbacks()
 
@@ -96,47 +104,57 @@ class BiolinkDashApp:
 
             # Header section with title and version selector
             html.Div([
-                html.Div([
-                    html.Span("Biolink Model Explorer", style={
-                        "fontSize": "18px",
-                        "fontWeight": 700,
-                        "color": self.styles.text,
-                        "letterSpacing": "-0.01em",
-                    }),
-                ]),
+                html.Span("Biolink Model Explorer", style=self.styles.header_title_style),
                 html.Div([
                     html.Label([
                         "Showing ",
                         html.Div(id="biolink-version-link", style={"display": "inline-block"}),
                         " version:"
-                    ], style={"marginRight": "8px", "color": self.styles.text_muted, "fontSize": "14px"}),
+                    ], style={**self.styles.header_text_style, "marginRight": "8px"}),
                     dcc.Dropdown(
                         id="biolink-version-input",
                         options=[{"label": tag, "value": tag} for tag in all_version_tags],
                         value=initial_version_tag,
                         clearable=False,
-                        style={"width": "130px", "marginRight": "5px"}
+                        style={"width": "112px", "fontSize": "13px"}
+                    ),
+                    html.Button(
+                        self.get_info_icon("#e9f4f2"),
+                        id="info-btn", title="About this app",
+                        className="header-icon-btn", style=self.styles.header_icon_button_style,
                     ),
                 ], style={
                     "display": "flex",
-                    "alignItems": "center"
+                    "alignItems": "center",
+                    "gap": "10px",
                 })
-            ], style={
-                "display": "flex",
-                "justifyContent": "space-between",
-                "alignItems": "center",
-                "padding": "12px 18px",
-                "backgroundColor": self.styles.surface,
-                "borderBottom": f"1px solid {self.styles.border_subtle}",
-            }),
+            ], style=self.styles.header_style),
             # Main content area, updated by callback
-            html.Div(id="main-content", children=self.get_main_content())
+            html.Div(id="main-content", children=self.get_main_content()),
+            # About / info modal (shown/hidden by assets/modal.js)
+            self.get_info_modal(),
         ], style={
             "fontFamily": self.styles.font_family,
             "backgroundColor": self.styles.bg,
             "color": self.styles.text,
             "minHeight": "100vh",
         })
+
+    def get_info_modal(self) -> html.Div:
+        """The 'About' modal overlay (hidden by default; toggled by assets/modal.js)."""
+        return html.Div(
+            id="info-modal",
+            style=self.styles.modal_backdrop_style,
+            children=html.Div(
+                id="info-modal-card",
+                style=self.styles.modal_card_style,
+                children=[
+                    html.Button("✕", id="info-close", title="Close",
+                                className="modal-close-btn", style=self.styles.modal_close_style),
+                    *self.get_info_content(),
+                ],
+            ),
+        )
 
     def get_main_content(self) -> html.Div:
         """Generates the main content area including tabs and graphs."""
@@ -186,45 +204,60 @@ class BiolinkDashApp:
                 dcc.Tabs(
                     id="tabs",
                     value="tab-1",
+                    style=self.styles.tabs_container_style,
                     children=[
                         dcc.Tab(label="Categories", value="tab-1",
+                                style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
                                 children=[tab_body("category-filters-container", "tree-cats", "node-info-cats")]),
                         dcc.Tab(label="Predicates", value="tab-2",
-                                children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")]),
-                        dcc.Tab(label="Info", value="tab-3", children=self.get_app_info())
+                                style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
+                                children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")])
                     ]),
         ])
 
     def get_filter_divs_preds(self, all_predicates: List[str], domains: List[str], ranges: List[str]) -> html.Div:
         """Generates the filter controls Div for the Predicates tab."""
-        filter_div_style = {"width": "20%", "display": "inline-block", "padding": "0 1%"}
+        filter_div_style = {"width": "220px"}
+        hierarchical_tip = ("Hierarchical: also matches predicates whose declared "
+                            "domain/range is an ancestor of the selected category.")
         return html.Div(
             [
                 self.get_search_filter("node-search-preds", all_predicates or []),
-                self.get_mixin_filter("include-mixins-preds", show_by_default=True),
+                self.get_checkbox_filter("include-mixins-preds", "Show mixins?", show_by_default=True),
+                self.get_checkbox_filter("include-noncanonical-preds", "Show non-canonical?", show_by_default=False),
+                # Domain + range dropdowns, grouped so they float right together
                 html.Div(
                     [
-                        html.Label("Filter by Domain (hierarchical):"),
-                        dcc.Dropdown(
-                            id="domain-filter",
-                            options=[{"label": d, "value": d} for d in domains or []],
-                            multi=True,
-                            placeholder="Select one or more domains...",
+                        html.Div(
+                            [
+                                html.Label("Filter by domain", title=hierarchical_tip,
+                                           style={**self.styles.filter_label_style, "cursor": "help"}),
+                                dcc.Dropdown(
+                                    id="domain-filter",
+                                    options=[{"label": d, "value": d} for d in domains or []],
+                                    multi=True,
+                                    placeholder="Select domains…",
+                                    className="bl-multi-dropdown",
+                                ),
+                            ],
+                            style=filter_div_style,
+                        ),
+                        html.Div(
+                            [
+                                html.Label("Filter by range", title=hierarchical_tip,
+                                           style={**self.styles.filter_label_style, "cursor": "help"}),
+                                dcc.Dropdown(
+                                    id="range-filter",
+                                    options=[{"label": r, "value": r} for r in ranges or []],
+                                    multi=True,
+                                    placeholder="Select ranges…",
+                                    className="bl-multi-dropdown",
+                                ),
+                            ],
+                            style=filter_div_style,
                         ),
                     ],
-                    style=filter_div_style,
-                ),
-                html.Div(
-                    [
-                        html.Label("Filter by Range (hierarchical):"),
-                        dcc.Dropdown(
-                            id="range-filter",
-                            options=[{"label": r, "value": r} for r in ranges or []],
-                            multi=True,
-                            placeholder="Select one or more ranges...",
-                        ),
-                    ],
-                    style=filter_div_style,
+                    style={"display": "flex", "gap": "20px", "marginLeft": "auto"},
                 ),
             ],
             style=self.styles.filters_wrapper_style,
@@ -235,45 +268,30 @@ class BiolinkDashApp:
         return html.Div(
             [
                 self.get_search_filter("node-search-cats", all_categories or []),
-                self.get_mixin_filter("include-mixins-cats", show_by_default=False),
+                self.get_checkbox_filter("include-mixins-cats", "Show mixins?", show_by_default=False),
             ],
             style=self.styles.filters_wrapper_style,
         )
 
-    def get_app_info(self) -> List[html.Div]:
-        """Generates the content for the 'Info' tab."""
-        chip_primary = self.get_chip_style(
-            self.styles.accent_tint,
-            border=f"2px solid {self.styles.accent}",
-        )
-        chip_noncanonical = self.get_chip_style(
-            self.styles.surface,
-            border=f"1.5px dashed {self.styles.noncanonical_border}",
-            text_color=self.styles.noncanonical_text,
-        )
-        chip_grey = self.get_chip_style(
-            self.styles.node_grey,
-            border=f"1.5px solid {self.styles.node_border_grey}",
-            text_color=self.styles.text_muted,
-        )
-        chip_mixin = self.get_chip_style(
-            self.styles.accent_tint,
-            opacity=self.styles.mixin_opacity,
-            border=f"2px solid {self.styles.accent}",
-        )
+    def get_info_content(self) -> List[Any]:
+        """Generates the 'About' content shown in the info modal."""
+        def glyph(symbol: str, color: str) -> html.Span:
+            """A colored node-glyph for the legend (● hollow ○)."""
+            return html.Span(symbol, style={
+                "color": color,
+                "fontSize": "17px",
+                "marginRight": "8px",
+                "verticalAlign": "middle",
+            })
 
         info_content = [
             html.Div(
                 style={
-                    "padding": "30px",
-                    "maxWidth": "800px",
-                    "margin": "0 auto",
-                    "marginBottom": "20px",
-                    "overflowY": "auto",
-                    "height": "calc(100vh - 150px)", # Adjust based on header/tabs
+                    "fontSize": "13.5px",
+                    "lineHeight": "1.6",
                 },
                 children=[
-                    html.H3("About this app"),
+                    html.H3("About this app", style={"marginTop": "0"}),
                     html.P(
                         [
                             "This application is designed to visualize and explore the relationships between ",
@@ -317,10 +335,10 @@ class BiolinkDashApp:
                     html.P(
                         """
                         The 'Predicates' tab shows the hierarchy of relationship predicates in the Biolink Model.
-                        All predicates are shown; canonical predicates (the Translator-preferred direction of a
-                        relationship) are visually distinguished from non-canonical ones (see the legend below).
-                        Use the filters at the top to focus on specific predicates, include/exclude mixin predicates,
-                        and to filter predicates based on their domain and range.
+                        By default only canonical predicates (the Translator-preferred direction of a relationship)
+                        are shown; check 'Show non-canonical?' to also include the non-preferred directions, which
+                        are visually distinguished (see the legend below). Use the filters at the top to focus on
+                        specific predicates, include/exclude mixin predicates, and to filter by domain and range.
                         """
                     ),
                     html.H4("Interacting with the graphs:"),
@@ -333,34 +351,36 @@ class BiolinkDashApp:
                                 target="_blank",
                                 style=self.styles.hyperlink_style,
                             ),
-                            " about that item in the area below the graph. Scroll over the graph to zoom in or out.",
+                            " about that item in the panel on the right. Hover a node to highlight it, and scroll over the graph to zoom in or out.",
                         ]
                     ),
                     html.H5("Legend:"),
                     html.P(
                         [
-                            html.Div("SomeCategory", style=chip_primary),
-                            html.Div("canonical_predicate", style=chip_primary),
-                            " Categories and canonical predicates are shown with a solid accent border.",
+                            "Each node is a small circle, whose ", html.B("color"),
+                            " shows whether it is a mixin and whose ", html.B("fill"),
+                            " shows whether it is canonical:",
                         ]
                     ),
                     html.P(
                         [
-                            html.Div("noncanonical_predicate", style=chip_noncanonical),
-                            " Non-canonical predicates (e.g. the non-preferred direction of a "
-                            "relationship) have a dashed, muted border.",
+                            glyph("●", self.styles.node_regular),
+                            "Green is a regular category, or a canonical predicate "
+                            "(the Translator-preferred direction of a relationship).",
                         ]
                     ),
                     html.P(
                         [
-                            html.Div("some_predicate", style=chip_grey),
-                            " Predicates with a non-specific domain and range (either NamedThing or not provided) are grey.",
+                            glyph("○", self.styles.node_regular),
+                            "A hollow circle is a non-canonical predicate (the non-preferred "
+                            "direction of a relationship).",
                         ]
                     ),
                     html.P(
                         [
-                            html.Div("SomeMixin", style=chip_mixin),
-                            " Mixins are faded.",
+                            glyph("●", self.styles.node_mixin), glyph("○", self.styles.node_mixin),
+                            "Gold marks a mixin — a category or predicate that enables multiple "
+                            "inheritance — solid or hollow following the same canonical rule.",
                         ]
                     ),
                     html.H4("Search functionality:"),
@@ -499,32 +519,52 @@ class BiolinkDashApp:
             return html.Div(text, style=self.get_chip_style(
                 color, chip_value=chip_value, text_color=text_color, margin_left="0"))
 
-        # --- Status badges ---
-        badges = []
+        title_block = html.Div(
+            [
+                html.Div(node_id, style={"fontSize": "17px", "fontWeight": 700,
+                                         "lineHeight": "1.25", "wordBreak": "break-word",
+                                         "color": self.styles.text}),
+                html.A("View in Biolink docs ↗", href=url, target="_blank",
+                       style={**self.styles.hyperlink_style, "fontSize": "13px",
+                              "display": "inline-block", "marginTop": "5px"}),
+            ],
+            style={"minWidth": "0"},
+        )
+
+        # "Filter graph to this node" icon button (adds it to the search dropdown on this tab)
+        button_id = "filter-to-node-preds" if is_predicate else "filter-to-node-cats"
+        item_word = "predicate" if is_predicate else "category"
+        filter_button = html.Button(
+            self.get_funnel_icon(self.styles.accent_dark),
+            id=button_id, n_clicks=0, title=f"Filter the graph to this {item_word}",
+            className="filter-icon-btn", style=self.styles.filter_icon_button_style,
+        )
+
+        header_row = html.Div(
+            [title_block, filter_button],
+            style={"display": "flex", "justifyContent": "space-between",
+                   "alignItems": "flex-start", "gap": "12px"},
+        )
+
+        sections = [header_row]
+
+        # --- Properties (fixed rows, so they stay put as you flip between nodes) ---
+        flags = [("Mixin", bool(attributes.get("is_mixin")),
+                  self.styles.chip_peach, self.styles.chip_peach_text)]
         if is_predicate:
-            if attributes.get("is_canonical"):
-                badges.append(chip("canonical", self.styles.chip_canonical, self.styles.chip_canonical_text))
-            else:
-                badges.append(chip("non-canonical", self.styles.chip_grey, self.styles.text_muted))
-        if attributes.get("is_mixin"):
-            badges.append(chip("mixin", self.styles.chip_peach, self.styles.chip_peach_text))
-        if attributes.get("is_symmetric"):
-            badges.append(chip("symmetric", self.styles.chip_purple, self.styles.chip_purple_text))
-
-        header_children = [
-            html.Div(node_id, style={"fontSize": "20px", "fontWeight": 700,
-                                     "lineHeight": "1.25", "wordBreak": "break-word",
-                                     "color": self.styles.text}),
-            html.A("View in Biolink docs ↗", href=url, target="_blank",
-                   style={**self.styles.hyperlink_style, "fontSize": "13px",
-                          "display": "inline-block", "marginTop": "5px"}),
-        ]
-        if badges:
-            header_children.append(
-                html.Div(badges, style={"display": "flex", "flexWrap": "wrap",
-                                        "gap": "6px", "marginTop": "13px"}))
-
-        sections = [html.Div(header_children)]
+            flags = [
+                ("Canonical", bool(attributes.get("is_canonical")),
+                 self.styles.chip_canonical, self.styles.chip_canonical_text),
+                ("Mixin", bool(attributes.get("is_mixin")),
+                 self.styles.chip_peach, self.styles.chip_peach_text),
+                ("Symmetric", bool(attributes.get("is_symmetric")),
+                 self.styles.chip_purple, self.styles.chip_purple_text),
+            ]
+        sections.append(self.get_detail_section(
+            "Properties",
+            html.Div([self.get_property_row(label, is_true, tint, tint_text)
+                      for (label, is_true, tint, tint_text) in flags]),
+        ))
 
         # --- Predicate relationship (domain -> range, inverse) ---
         if is_predicate:
@@ -533,8 +573,8 @@ class BiolinkDashApp:
             relationship = html.Div(
                 [
                     chip(domain if domain else "—", self.styles.chip_domain, chip_value=domain),
-                    html.Span("→", style={"margin": "0 9px", "color": self.styles.text_muted,
-                                               "fontSize": "16px"}),
+                    html.Span("→", style={"margin": "0 8px", "color": self.styles.text_muted,
+                                               "fontSize": "14px"}),
                     chip(range_val if range_val else "—", self.styles.chip_domain, chip_value=range_val),
                 ],
                 style={"display": "flex", "alignItems": "center", "flexWrap": "wrap", "gap": "4px"},
@@ -558,6 +598,48 @@ class BiolinkDashApp:
             html.Div(label, style=self.styles.detail_label_style),
             value_component,
         ])
+
+    @staticmethod
+    def get_funnel_icon(color: str) -> html.Img:
+        """A classic filter/funnel icon (inline SVG), stroked in the given color."""
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+            f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
+        )
+        src = "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+        return html.Img(src=src, style={"width": "15px", "height": "15px", "display": "block"})
+
+    @staticmethod
+    def get_info_icon(color: str) -> html.Img:
+        """An 'info' icon (inline SVG), stroked in the given color."""
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+            f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/>'
+            '<line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+        )
+        src = "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+        return html.Img(src=src, style={"width": "17px", "height": "17px", "display": "block"})
+
+    def get_property_row(self, label: str, is_true: bool, tint: str, tint_text: str) -> html.Div:
+        """
+        A fixed row in the Properties grid: property name on the left, and a colored
+        "Yes" pill (when true) or a muted "No" on the right. Rows are always present in
+        the same order so the panel doesn't shift when flipping between nodes.
+        """
+        if is_true:
+            value = html.Span("Yes", style={
+                "backgroundColor": tint, "color": tint_text, "fontWeight": 600,
+                "fontSize": "12.5px", "padding": "2px 10px", "borderRadius": "999px",
+            })
+        else:
+            value = html.Span("No", style={"color": self.styles.text_muted, "fontSize": "13px"})
+        return html.Div(
+            [html.Span(label, style={"color": self.styles.text, "fontSize": "13px"}), value],
+            style={"display": "flex", "justifyContent": "space-between", "alignItems": "center",
+                   "padding": "6px 0", "borderBottom": f"1px solid {self.styles.border_subtle}"},
+        )
 
     def format_detail_value(self, value: Any) -> Any:
         """Renders a metadata value (string, list, or missing) for the detail panel."""
@@ -620,6 +702,16 @@ class BiolinkDashApp:
         filtered_elements = self.filter_graph_to_certain_nodes(non_mixin_node_ids, element_set)
 
         return filtered_elements
+
+    def remove_noncanonical(self, element_set: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Filters predicate elements down to canonical predicates and their edges."""
+        canonical_node_ids: Set[str] = {
+            element["data"]["id"]
+            for element in element_set
+            if "id" in element.get("data", {})
+               and element["data"].get("attributes", {}).get("is_canonical", False)
+        }
+        return self.filter_graph_to_certain_nodes(canonical_node_ids, element_set)
 
     def filter_graph(
         self,
@@ -696,36 +788,36 @@ class BiolinkDashApp:
 
         return relevant_elements
 
-    @staticmethod
-    def get_mixin_filter(filter_id: str, show_by_default: bool = False) -> html.Div:
-        """Creates a 'Show mixins?' checklist component."""
+    def get_checkbox_filter(self, filter_id: str, label: str, show_by_default: bool = False) -> html.Div:
+        """Creates a labeled 'include' checkbox filter (e.g. 'Show mixins?')."""
         return html.Div(
             [
-                html.Label("Show mixins?"),
+                html.Label(label, style=self.styles.filter_label_style),
                 dcc.Checklist(
                     id=filter_id,
-                    options=[{"label": "", "value": "include"}], # Label-less checkbox
+                    options=[{"label": " include", "value": "include"}],
                     value=["include"] if show_by_default else [],
+                    style={"fontSize": "13px", "color": self.styles.text},
                 ),
             ],
-            style={"width": "20%", "display": "inline-block", "padding": "0 1%"},
+            style={"flex": "0 0 auto"},
         )
 
-    @staticmethod
-    def get_search_filter(filter_id: str, node_names: List[str]) -> html.Div:
+    def get_search_filter(self, filter_id: str, node_names: List[str]) -> html.Div:
         """Creates a search dropdown component."""
-        item_type = "predicate" if "pred" in filter_id else "category"
+        label_text = "Search predicates" if "pred" in filter_id else "Search categories"
         return html.Div(
             [
-                html.Label(f"Search for {item_type}(s):"),
+                html.Label(label_text, style=self.styles.filter_label_style),
                 dcc.Dropdown(
                     id=filter_id,
                     options=[{"label": name, "value": name} for name in sorted(node_names)],
                     multi=True,
-                    placeholder=f"Select items... (filters to lineages)",
+                    placeholder="Type to filter to lineages…",
+                    className="bl-multi-dropdown",
                 ),
             ],
-            style={"width": "30%", "display": "inline-block", "padding": "0 1%"},
+            style={"width": "280px"},
         )
 
     def get_chip_style(
@@ -749,11 +841,11 @@ class BiolinkDashApp:
             final_text_color = self.styles.text_muted
 
         chip_style: Dict[str, Any] = {
-            "padding": "3px 10px",
+            "padding": "2px 9px",
             "borderRadius": "999px" if circular else "6px",
             "backgroundColor": final_color,
             "marginLeft": margin_left,
-            "fontSize": "13.5px",
+            "fontSize": "12.5px",
             "fontWeight": 500,
             "display": "inline-block",
             "color": final_text_color,
@@ -802,9 +894,11 @@ class BiolinkDashApp:
         @self.app.callback(
             Output("elements-preds", "data", allow_duplicate=True),
             Output("include-mixins-preds", "value"),
+            Output("include-noncanonical-preds", "value"),
             Input("domain-filter", "value"),
             Input("range-filter", "value"),
             Input("include-mixins-preds", "value"),
+            Input("include-noncanonical-preds", "value"),
             Input("node-search-preds", "value"),
             Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
             State('session-biolink-version-store', 'data'),  # READ version from store
@@ -814,27 +908,35 @@ class BiolinkDashApp:
             selected_domains: Optional[List[str]],
             selected_ranges: Optional[List[str]],
             include_mixins: List[str],
+            include_noncanonical: List[str],
             search_nodes: Optional[List[str]],
             tab_trigger: int,
             version_tag: str
-        ) -> Tuple[List[Dict[str, Any]], List[str]]:
-            """Filters predicate graph based on domain, range, mixins, and search."""
+        ) -> Tuple[List[Dict[str, Any]], List[str], List[str]]:
+            """Filters predicate graph based on domain, range, mixins, canonical, and search."""
 
             # Get data from cache for the session's version
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data or not version_data.get('bm'): # Check if data/bm loaded
-                 # Return empty elements and original mixin value if data is missing
-                 return [], include_mixins
+                 # Return empty elements and original values if data is missing
+                 return [], include_mixins, include_noncanonical
 
             bm = version_data['bm'] # Use the BM instance for THIS version
             elements_predicates = version_data['elements_predicates'] # Use elements for THIS version
 
-
             include_mixins_updated = include_mixins # Start with user's selection
+            include_noncanonical_updated = include_noncanonical
             if search_nodes:
-                # If a mixin was searched, force 'include mixins' checkbox
+                # If a mixin was searched, force 'include mixins'
                 if any(bm.predicate_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
+                # If a non-canonical predicate was searched, force 'show non-canonical'
+                if any(not bm.predicate_dag.nodes[node_id].get("is_canonical") for node_id in search_nodes):
+                    include_noncanonical_updated = ["include"]
+
+            # Restrict to canonical predicates unless 'show non-canonical' is checked
+            if "include" not in include_noncanonical_updated:
+                elements_predicates = self.remove_noncanonical(elements_predicates)
 
             return (self.filter_graph(elements_predicates,
                                       selected_domains,
@@ -843,7 +945,8 @@ class BiolinkDashApp:
                                       search_nodes,
                                       bm.predicate_dag,
                                       bm),
-                    include_mixins_updated)
+                    include_mixins_updated,
+                    include_noncanonical_updated)
 
         @self.app.callback(
             Output("elements-cats", "data", allow_duplicate=True),
@@ -902,6 +1005,38 @@ class BiolinkDashApp:
             """Displays information for the selected predicate node."""
             return self.get_node_info(selected_nodes)
 
+        # "Filter graph to this node" buttons: add the selected node to the search dropdown
+        def add_selected_to_search(n_clicks, selected_nodes, current_search):
+            # Guard against the callback firing when the button is first rendered
+            # (dynamically-added components fire once with n_clicks == 0).
+            if not n_clicks or not selected_nodes:
+                return no_update
+            node_id = selected_nodes[0].get("id")
+            current_search = current_search or []
+            if not node_id or node_id in current_search:
+                return no_update
+            return current_search + [node_id]
+
+        @self.app.callback(
+            Output("node-search-cats", "value"),
+            Input("filter-to-node-cats", "n_clicks"),
+            State("selected-cats", "data"),
+            State("node-search-cats", "value"),
+            prevent_initial_call=True,
+        )
+        def filter_to_selected_category(n_clicks, selected_nodes, current_search):
+            return add_selected_to_search(n_clicks, selected_nodes, current_search)
+
+        @self.app.callback(
+            Output("node-search-preds", "value"),
+            Input("filter-to-node-preds", "n_clicks"),
+            State("selected-preds", "data"),
+            State("node-search-preds", "value"),
+            prevent_initial_call=True,
+        )
+        def filter_to_selected_predicate(n_clicks, selected_nodes, current_search):
+            return add_selected_to_search(n_clicks, selected_nodes, current_search)
+
         # Update the session store when version dropdown changes
         @self.app.callback(
             Output('session-biolink-version-store', 'data'),
@@ -952,12 +1087,13 @@ class BiolinkDashApp:
                     # Use actual version for link text if different from tag?
                     href=f"https://github.com/biolink/biolink-model/blob/{version_tag}/biolink-model.yaml", # Link using tag
                     target="_blank",
-                    style=self.styles.hyperlink_style
+                    style=self.styles.header_link_style
                 )
 
-            # Return updated elements and filter components
+            # Return updated elements and filter components. Non-canonical predicates
+            # are hidden by default (matching the unchecked "Show non-canonical?" box).
             return (version_data['elements_categories'],
-                    version_data['elements_predicates'],
+                    self.remove_noncanonical(version_data['elements_predicates']),
                     cat_filters,
                     pred_filters,
                     version_link)
