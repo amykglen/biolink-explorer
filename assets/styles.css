@@ -5,11 +5,7 @@ html, body {
     overflow: hidden; /* Prevent scrollbars if content fits within viewport */
 }
 
-#app-container { /* If you have a main container div in your app.layout */
-    height: 100vh; /* Use viewport height for the main container */
-    display: flex;
-    flex-direction: column;
-}
+/* (The main container height is managed by the layout in main.py, not here.) */
 
 /* ---- Dropdowns & checklists (dcc.Dropdown / dcc.Checklist, Dash 4 native) ---- */
 /* Accent tokens: teal #2d8f83 (dark #1f6d64, tint #e4f0ee); neutral border #e6e3de */
@@ -62,14 +58,12 @@ html, body {
 .dash-dropdown-placeholder {
     color: #a29a8d;
 }
-/* Value pill: only the MULTI-select dropdowns get the chip background (with padding);
-   single-select (e.g. the version picker) shows plain text. */
-.bl-multi-dropdown .dash-dropdown-value-item {
-    background: #e4f0ee;
-    color: #2a2825;
-    border-radius: 5px;
-    padding: 1px 8px;
-    margin: 1px 3px 1px 0;
+/* Multi-select values render as plain comma-separated text (no chips) — Dash draws
+   each value as its own item with no separator, so add one before every item but the
+   first: "A, B, C". */
+.bl-multi-dropdown .dash-dropdown-value-item:not(:first-child)::before {
+    content: ", ";
+    white-space: pre;
 }
 /* The in-menu search magnifier icon (default purple) -> muted */
 .dash-dropdown-search-icon,
@@ -160,9 +154,9 @@ html, body {
     box-shadow: 0 8px 24px -12px rgba(42, 40, 37, 0.3);
     background: #fefefc;
 }
-/* The options list is the scroll area — make it tall enough to show ~12 rows. */
+/* The options list is the scroll area — tall enough to show ~10 rows. */
 .dash-dropdown-options {
-    max-height: 360px !important;
+    max-height: 430px !important;
     overflow-y: auto !important;
 }
 .dash-dropdown-options .dash-options-list-option-wrapper {
@@ -173,6 +167,28 @@ html, body {
 .dash-dropdown-options .dash-options-list-option-wrapper:hover {
     background: #eef4f2;
 }
+/* Inline filter checkboxes ("Show mixins?" etc.): the framework centers the row on
+   the text baseline, which floats the checkbox slightly high — center it on the text. */
+.bl-checkbox-filter .dash-options-list-option {
+    align-items: center;
+}
+
+/* Draggable width handle on the detail panel's left edge. Invisible until hovered/
+   dragged, when a thin teal guide appears. */
+.panel-resize-handle::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 1px;
+    height: 100%;
+    background: transparent;
+    transition: background-color 0.12s ease;
+}
+.panel-resize-handle:hover::after {
+    background: #7bbcb4;
+}
+
 /* Filter (funnel) icon button in the detail panel — hover/active feedback */
 .filter-icon-btn {
     transition: background-color 0.12s ease, border-color 0.12s ease;

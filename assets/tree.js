@@ -38,13 +38,14 @@
     var LABEL_GAP = 7;      // gap between circle and its label
     var MIN_COL_GAP = 28;   // minimum horizontal gap between adjacent column labels
     var FIT_PAD = 28;
-    var MIN_OPEN_ZOOM = 0.62;  // don't open more zoomed-out than this
+    var MIN_OPEN_ZOOM = 0.85;  // fallback (big graphs): don't open more zoomed-out than this
+    var FIT_FULL_MIN = 0.28;   // if the whole graph fits at >= this zoom, open showing all of it
     var DAGRE = { ranksep: 78, edgesep: 6 };
 
     // Vertical spacing scales with node count: tight for big graphs, airier when a
     // filter/search narrows the graph to just a few nodes.
     function rowSpacing(n) {
-        var minRow = 20, maxRow = 50, nMin = 10, nMax = 110;
+        var minRow = 16, maxRow = 31, nMin = 6, nMax = 95;
         if (n <= nMin) return maxRow;
         if (n >= nMax) return minRow;
         return maxRow + (minRow - maxRow) * (n - nMin) / (nMax - nMin);
@@ -64,17 +65,19 @@
         var has = function (c) { return classes.indexOf(c) >= 0; };
         var mixin = has("mixin");
         var color = mixin ? P.mixin : P.regular;
-        var s = { fill: color, stroke: color, sw: 1.5, r: R, text: P.text, ring: false };
+        var s = { fill: color, stroke: color, sw: 1.5, r: R, text: P.text, ring: false, searchRing: false };
         if (has("noncanonical")) { s.fill = "none"; s.sw = 1.75; }  // hollow
         if (has("searched")) {
-            s.fill = has("noncanonical") ? "none" : P.highlight; s.stroke = P.highlight;
-            s.sw = has("noncanonical") ? 2 : 1.5; s.r = R + 2;
+            // A search match must NOT recolor the dot — its color (mixin) and fill
+            // (canonical) both carry meaning. Mark it with an outer rust ring + a rust,
+            // bold label, so matches pop without overriding the encoding.
+            s.searchRing = true;
+            s.text = P.highlight;
         }
         if (selected) {
-            // Don't touch the fill (solid/hollow encodes canonical) — enlarge, thicken
-            // the stroke, and add an outer ring instead.
+            // Likewise don't touch the fill — enlarge, thicken the stroke, add a ring.
             s.sw = s.sw + 0.75; s.r = s.r + 2.5; s.ring = true;
-            s.text = mixin ? P.mixin_dark : P.regular_dark;
+            if (!s.searchRing) s.text = mixin ? P.mixin_dark : P.regular_dark;
         }
         return s;
     }
@@ -131,14 +134,40 @@
         validEdges.forEach(function (e) { gr.setEdge(e.data.source, e.data.target); });
         dagre.layout(gr);
 
-        var pos = {}, points = {};
+        // dagre aligns node-box CENTERS per rank; since each box's width includes its
+        // side label, the circles (dots) would land at different x within a rank. We take
+        // only dagre's vertical resolution (n.y) + its rank assignment, then recompute a
+        // single dot-column x per rank — internal labels extend left, leaf labels right,
+        // the same spacing model the tree layout uses — so every dot in a rank lines up.
+        // dagre gives all nodes in a rank the same box-center x; bucket by that x to rank.
+        var rankXs = [];
         gr.nodes().forEach(function (id) {
-            var n = gr.node(id);
-            var cx = n.internal ? (n.x + n.width / 2 - R) : (n.x - n.width / 2 + R);
-            pos[id] = { cx: cx, cy: n.y, internal: n.internal, labelW: info[id].labelW };
+            var x = gr.node(id).x, hit = false;
+            for (var i = 0; i < rankXs.length; i++) { if (Math.abs(rankXs[i] - x) < 2) { hit = true; break; } }
+            if (!hit) rankXs.push(x);
         });
-        gr.edges().forEach(function (e) { points[e.v + " " + e.w] = gr.edge(e).points.map(function (p) { return [p.x, p.y]; }); });
-        return { pos: pos, points: points };
+        rankXs.sort(function (a, b) { return a - b; });
+        function rankOf(x) { for (var i = 0; i < rankXs.length; i++) if (Math.abs(rankXs[i] - x) < 2) return i; return 0; }
+
+        var leftExt = {}, rightExt = {};
+        gr.nodes().forEach(function (id) {
+            var n = gr.node(id), r = rankOf(n.x);
+            if (n.internal) leftExt[r] = Math.max(leftExt[r] || 0, info[id].labelW);
+            else rightExt[r] = Math.max(rightExt[r] || 0, info[id].labelW);
+        });
+        var colX = { 0: 0 };
+        for (var d = 1; d < rankXs.length; d++) {
+            colX[d] = colX[d - 1] + (R + LABEL_GAP + (rightExt[d - 1] || 0)) + MIN_COL_GAP + ((leftExt[d] || 0) + LABEL_GAP + R);
+        }
+
+        var pos = {};
+        gr.nodes().forEach(function (id) {
+            var n = gr.node(id), r = rankOf(n.x);
+            pos[id] = { cx: colX[r], cy: n.y, internal: n.internal, labelW: info[id].labelW };
+        });
+        // Return no routed points -> edges draw as clean bump curves between dots
+        // (dagre's own routing produced squiggles once we moved the dots).
+        return { pos: pos, points: {} };
     }
 
     function render(containerId, elements, opts) {
@@ -223,13 +252,15 @@
             var state = { sel: false, hover: false };
             var ng = nodeLayer.append("g").attr("transform", "translate(" + p.cx + "," + p.cy + ")")
                 .style("cursor", "pointer");
+            var searchRing = ng.append("circle").attr("fill", "none").attr("stroke", P.highlight)
+                .attr("stroke-width", 1.75).attr("opacity", 0.95).attr("r", 0);  // search-match ring
             var ring = ng.append("circle").attr("fill", "none").attr("stroke", P.text)
                 .attr("stroke-width", 1.25).attr("opacity", 0.55).attr("r", 0);  // selection ring
             var circle = ng.append("circle");
             var label = ng.append("text")
                 .attr("y", 0).attr("text-anchor", internal ? "end" : "start").attr("dominant-baseline", "central")
                 .attr("font-family", FONT_FAMILY).attr("font-size", FONT_SIZE)
-                .attr("stroke", P.bg).attr("stroke-width", 3).attr("paint-order", "stroke")  // legibility halo
+                .attr("stroke", P.bg).attr("stroke-width", 4.5).attr("paint-order", "stroke")  // legibility halo
                 .attr("pointer-events", "none").text(it.label);
             // transparent hit area covering circle + label
             ng.append("rect")
@@ -244,6 +275,8 @@
                 if (state.sel) weight = 700;
                 circle.attr("r", r).attr("fill", s.fill).attr("stroke", s.stroke).attr("stroke-width", s.sw);
                 ring.attr("r", s.ring ? r + 3.5 : 0);
+                searchRing.attr("r", s.searchRing ? r + 3 : 0);
+                if (s.searchRing) weight = Math.max(weight, 700);  // bold rust label for matches
                 var off = r + LABEL_GAP;
                 label.attr("fill", s.text).attr("font-weight", weight).attr("x", internal ? -off : off);
             }
@@ -303,10 +336,14 @@
             var W = container.clientWidth, H = container.clientHeight;
             if (!W || !H) return false;
             var kFitAll = Math.min((W - 2 * FIT_PAD) / gW, (H - 2 * FIT_PAD) / gH);
-            // Open at a comfortable zoom: fill the width, but never more zoomed-out than
-            // MIN_OPEN_ZOOM (so big graphs like the predicate DAG start readable, anchored
-            // on the root), and never more zoomed-in than 1.15.
-            var k = Math.min(1.15, Math.max((W - 2 * FIT_PAD) / gW, kFitAll, MIN_OPEN_ZOOM));
+            // Prefer to open showing the WHOLE graph (width AND height) — this is the nice
+            // default for the unfiltered trees and for filtered subgraphs. But once mixins /
+            // non-canonical are shown the graph is far too tall to fit usefully, so below a
+            // usable fit-zoom we fall back to filling the width, anchored on the root and
+            // never more zoomed-out than MIN_OPEN_ZOOM. Never zoom in past 1.15.
+            var k = (kFitAll >= FIT_FULL_MIN)
+                ? Math.min(1.15, kFitAll)
+                : Math.min(1.15, Math.max((W - 2 * FIT_PAD) / gW, MIN_OPEN_ZOOM));
             var tx = FIT_PAD - minX * k;
             var ty = (k * gH <= H - 2 * FIT_PAD) ? (H - k * gH) / 2 - minY * k : H / 2 - rootCy * k;
             svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));

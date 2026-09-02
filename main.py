@@ -116,6 +116,7 @@ class BiolinkDashApp:
                         options=[{"label": tag, "value": tag} for tag in all_version_tags],
                         value=initial_version_tag,
                         clearable=False,
+                        maxHeight=420,
                         style={"width": "112px", "fontSize": "13px"}
                     ),
                     html.Button(
@@ -160,10 +161,11 @@ class BiolinkDashApp:
         """Generates the main content area including tabs and graphs."""
         # Each tab is a horizontal row: the graph column (filters + tree) on the left,
         # and the node-detail panel on the right.
+        # Fills the viewport below the header (~46px) and the tab bar (~42px).
         tab_row_style = {
             "display": "flex",
             "flexDirection": "row",
-            "height": "calc(100vh - 110px)",
+            "height": "calc(100vh - 88px)",
         }
         graph_col_style = {
             "display": "flex",
@@ -186,8 +188,16 @@ class BiolinkDashApp:
                             html.Div(id=tree_id, className="tree-container", style=tree_style),
                         ],
                     ),
-                    html.Div(id=info_id, style=self.styles.detail_panel_style,
-                             children=self.get_node_info(None)),
+                    # Detail panel: a resize handle + the (callback-updated) content
+                    html.Div(
+                        style=self.styles.detail_panel_style,
+                        children=[
+                            html.Div(className="panel-resize-handle",
+                                     style=self.styles.panel_resize_handle_style),
+                            html.Div(id=info_id, style=self.styles.detail_content_style,
+                                     children=self.get_node_info(None)),
+                        ],
+                    ),
                 ],
             )
 
@@ -196,23 +206,35 @@ class BiolinkDashApp:
             children=[
                 # Stores holding the (filtered) graph elements and the selected node,
                 # driving the D3 tree renderer (assets/tree.js) and the info panels.
-                dcc.Store(id="elements-cats"),
-                dcc.Store(id="elements-preds"),
-                dcc.Store(id="selected-cats"),
-                dcc.Store(id="selected-preds"),
-                dcc.Store(id="render-signal"),  # clientside render callback target
-                dcc.Tabs(
-                    id="tabs",
-                    value="tab-1",
-                    style=self.styles.tabs_container_style,
+                # Wrapped in dcc.Loading so a slow (e.g. cold Heroku dyno) update shows a
+                # spinner; delay_show avoids flashing it on fast, warm interactions.
+                dcc.Loading(
+                    id="app-loading",
+                    type="circle",
+                    color=self.styles.accent,
+                    delay_show=350,
+                    overlay_style={"visibility": "visible", "opacity": 0.55,
+                                   "backgroundColor": self.styles.bg},
                     children=[
-                        dcc.Tab(label="Categories", value="tab-1",
-                                style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
-                                children=[tab_body("category-filters-container", "tree-cats", "node-info-cats")]),
-                        dcc.Tab(label="Predicates", value="tab-2",
-                                style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
-                                children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")])
-                    ]),
+                        dcc.Store(id="elements-cats"),
+                        dcc.Store(id="elements-preds"),
+                        dcc.Store(id="selected-cats"),
+                        dcc.Store(id="selected-preds"),
+                        dcc.Store(id="render-signal"),  # clientside render callback target
+                        dcc.Tabs(
+                            id="tabs",
+                            value="tab-1",
+                            style=self.styles.tabs_container_style,
+                            children=[
+                                dcc.Tab(label="Categories", value="tab-1",
+                                        style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
+                                        children=[tab_body("category-filters-container", "tree-cats", "node-info-cats")]),
+                                dcc.Tab(label="Predicates", value="tab-2",
+                                        style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
+                                        children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")])
+                            ]),
+                    ],
+                ),
         ])
 
     def get_filter_divs_preds(self, all_predicates: List[str], domains: List[str], ranges: List[str]) -> html.Div:
@@ -238,6 +260,7 @@ class BiolinkDashApp:
                                     multi=True,
                                     placeholder="Select domains…",
                                     className="bl-multi-dropdown",
+                                    maxHeight=420,
                                 ),
                             ],
                             style=filter_div_style,
@@ -252,6 +275,7 @@ class BiolinkDashApp:
                                     multi=True,
                                     placeholder="Select ranges…",
                                     className="bl-multi-dropdown",
+                                    maxHeight=420,
                                 ),
                             ],
                             style=filter_div_style,
@@ -503,7 +527,7 @@ class BiolinkDashApp:
         """
         if not selected_nodes or not selected_nodes[0] or "id" not in selected_nodes[0]:
             return html.Div(
-                "Click a node in the graph to see its details.",
+                "Click an item in the graph to see its details.",
                 style={"color": self.styles.text_muted, "fontSize": "14px",
                        "lineHeight": "1.5", "marginTop": "4px"},
             )
@@ -789,18 +813,20 @@ class BiolinkDashApp:
         return relevant_elements
 
     def get_checkbox_filter(self, filter_id: str, label: str, show_by_default: bool = False) -> html.Div:
-        """Creates a labeled 'include' checkbox filter (e.g. 'Show mixins?')."""
+        """Creates an inline checkbox filter, e.g. '☐ Show mixins?'."""
         return html.Div(
             [
-                html.Label(label, style=self.styles.filter_label_style),
                 dcc.Checklist(
                     id=filter_id,
-                    options=[{"label": " include", "value": "include"}],
+                    className="bl-checkbox-filter",
+                    options=[{"label": label, "value": "include"}],
                     value=["include"] if show_by_default else [],
                     style={"fontSize": "13px", "color": self.styles.text},
+                    inputStyle={"marginRight": "6px"},
                 ),
             ],
-            style={"flex": "0 0 auto"},
+            # Nudge up from the bottom so the checkbox sits level with the dropdowns.
+            style={"flex": "0 0 auto", "paddingBottom": "7px"},
         )
 
     def get_search_filter(self, filter_id: str, node_names: List[str]) -> html.Div:
@@ -815,6 +841,7 @@ class BiolinkDashApp:
                     multi=True,
                     placeholder="Type to filter to lineages…",
                     className="bl-multi-dropdown",
+                    maxHeight=420,
                 ),
             ],
             style={"width": "280px"},

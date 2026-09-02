@@ -88,17 +88,33 @@ class Styles:
         # ---- Shared component styles ---- #
         self.font_family = FONT_STACK
 
-        # Right-hand detail panel
+        # Right-hand detail panel (width is a CSS var so it can be dragged; see resize.js)
         self.detail_panel_style = {
-            "width": "340px",
+            "position": "relative",
+            "width": "var(--bl-panel-width, 410px)",
             "flexShrink": 0,
             "height": "100%",
-            "overflowY": "auto",
-            "padding": "24px 24px 34px 24px",
             "backgroundColor": self.surface,
             "borderLeft": f"1px solid {self.border_subtle}",
             "color": self.text,
             "boxSizing": "border-box",
+        }
+        # The scrollable content inside the panel (children replaced by callbacks)
+        self.detail_content_style = {
+            "height": "100%",
+            "overflowY": "auto",
+            "padding": "24px 24px 34px 24px",
+            "boxSizing": "border-box",
+        }
+        # Drag handle on the panel's left edge
+        self.panel_resize_handle_style = {
+            "position": "absolute",
+            "left": "-3px",
+            "top": "0",
+            "width": "7px",
+            "height": "100%",
+            "cursor": "col-resize",
+            "zIndex": 5,
         }
         self.detail_label_style = {
             "fontSize": "10.5px",
@@ -170,7 +186,7 @@ class Styles:
             "height": "30px",
             "padding": "0",
             "backgroundColor": "transparent",
-            "border": "1px solid rgba(255,255,255,0.35)",
+            "border": "none",
             "borderRadius": "7px",
             "cursor": "pointer",
         }
