@@ -197,6 +197,26 @@ class BiolinkDashApp:
                 ],
                 id=f"{tree_id}--filterbanner", className="bl-filter-banner",
             )
+            # "Hidden content" pills (one per hideable type), stacked bottom-left. Each has its
+            # own Show button that flips just its checkbox.
+            mixin_cb = ("include-mixins-cats" if "cats" in tree_id
+                        else "include-mixins-assoc" if "assoc" in tree_id
+                        else "include-mixins-preds")
+
+            def hidden_pill_div(kind, reveal_cb):
+                return html.Div(
+                    [
+                        html.Span("", id=f"{tree_id}--hiddencount-{kind}", className="bl-hidden-badge-text"),
+                        html.Button("Show", className="bl-hidden-badge-show"),
+                    ],
+                    id=f"{tree_id}--hiddenbadge-{kind}", className="bl-hidden-badge",
+                    **{"data-reveal": reveal_cb},
+                )
+
+            pills = [hidden_pill_div("mixins", mixin_cb)]
+            if "preds" in tree_id:
+                pills.append(hidden_pill_div("noncanon", "include-noncanonical-preds"))
+            hidden_badge = html.Div(pills, className="bl-hidden-badges")
             return html.Div(
                 style=tab_row_style,
                 children=[
@@ -204,13 +224,14 @@ class BiolinkDashApp:
                         style=graph_col_style,
                         children=[
                             html.Div(id=filters_id),  # filters populated by callback
-                            # Graph area (relative) so the "Filtered view" banner can overlay it.
+                            # Graph area (relative) so the overlays (banners/badges) can sit on it.
                             html.Div(
                                 style={"position": "relative", "flex": "1 1 auto", "minHeight": "0",
                                        "display": "flex"},
                                 children=[
                                     html.Div(id=tree_id, className="tree-container", style=tree_style),
                                     filter_banner,
+                                    hidden_badge,
                                 ],
                             ),
                         ],
@@ -800,6 +821,24 @@ class BiolinkDashApp:
 
         return filtered_elements
 
+    @staticmethod
+    def count_nodes(elements: List[Dict[str, Any]]) -> int:
+        """Number of node (not edge) elements in a Cytoscape-style element list."""
+        return sum(1 for e in elements if "source" not in e.get("data", {}))
+
+    def hidden_pill(self, count: int, label: str) -> Tuple[str, str]:
+        """
+        Count text + className for one 'hidden content' pill (mixins or non-canonical) —
+        shown when that content is hidden but available in the current subgraph.
+        """
+        if count <= 0:
+            return "", "bl-hidden-badge"
+        return f"{count} {label} hidden", "bl-hidden-badge bl-hidden-badge-visible"
+
+    @staticmethod
+    def _mixins_label(count: int) -> str:
+        return f"mixin{'s' if count != 1 else ''}"
+
     def remove_noncanonical(self, element_set: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Filters predicate elements down to canonical predicates and their edges."""
         canonical_node_ids: Set[str] = {
@@ -1054,6 +1093,10 @@ class BiolinkDashApp:
             Output("elements-preds", "data", allow_duplicate=True),
             Output("include-mixins-preds", "value"),
             Output("include-noncanonical-preds", "value"),
+            Output("tree-preds--hiddencount-mixins", "children"),
+            Output("tree-preds--hiddenbadge-mixins", "className"),
+            Output("tree-preds--hiddencount-noncanon", "children"),
+            Output("tree-preds--hiddenbadge-noncanon", "className"),
             Input("domain-filter", "data"),
             Input("range-filter", "data"),
             Input("include-mixins-preds", "value"),
@@ -1071,17 +1114,18 @@ class BiolinkDashApp:
             search_nodes: Optional[List[str]],
             tab_trigger: int,
             version_tag: str
-        ) -> Tuple[List[Dict[str, Any]], List[str], List[str]]:
+        ) -> Tuple[List[Dict[str, Any]], List[str], List[str], str, str, str, str]:
             """Filters predicate graph based on domain, range, mixins, canonical, and search."""
 
             # Get data from cache for the session's version
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data or not version_data.get('bm'): # Check if data/bm loaded
                  # Return empty elements and original values if data is missing
-                 return [], include_mixins, include_noncanonical
+                 return ([], include_mixins, include_noncanonical,
+                         "", "bl-hidden-badge", "", "bl-hidden-badge")
 
             bm = version_data['bm'] # Use the BM instance for THIS version
-            elements_predicates = version_data['elements_predicates'] # Use elements for THIS version
+            all_predicates = version_data['elements_predicates']  # full set (incl. non-canonical)
 
             include_mixins_updated = include_mixins # Start with user's selection
             include_noncanonical_updated = include_noncanonical
@@ -1094,22 +1138,31 @@ class BiolinkDashApp:
                     include_noncanonical_updated = ["include"]
 
             # Restrict to canonical predicates unless 'show non-canonical' is checked
-            if "include" not in include_noncanonical_updated:
-                elements_predicates = self.remove_noncanonical(elements_predicates)
+            elements_predicates = (all_predicates if "include" in include_noncanonical_updated
+                                   else self.remove_noncanonical(all_predicates))
 
-            return (self.filter_graph(elements_predicates,
-                                      selected_domains,
-                                      selected_ranges,
-                                      include_mixins_updated,
-                                      search_nodes,
-                                      bm.predicate_dag,
-                                      bm),
-                    include_mixins_updated,
-                    include_noncanonical_updated)
+            def flt(elements, mixins, dom=selected_domains, rng=selected_ranges):
+                return self.filter_graph(elements, dom, rng, mixins, search_nodes, bm.predicate_dag, bm)
+
+            result = flt(elements_predicates, include_mixins_updated)
+            # How many nodes each hidden toggle would add, within the current subgraph.
+            hidden_mixins = 0
+            if "include" not in include_mixins_updated:
+                hidden_mixins = self.count_nodes(flt(elements_predicates, ["include"])) - self.count_nodes(result)
+            hidden_noncanonical = 0
+            if "include" not in include_noncanonical_updated:
+                hidden_noncanonical = self.count_nodes(flt(all_predicates, include_mixins_updated)) - self.count_nodes(result)
+            mtext, mclass = self.hidden_pill(hidden_mixins, self._mixins_label(hidden_mixins))
+            ntext, nclass = self.hidden_pill(hidden_noncanonical, "non-canonical")
+
+            return (result, include_mixins_updated, include_noncanonical_updated,
+                    mtext, mclass, ntext, nclass)
 
         @self.app.callback(
             Output("elements-cats", "data", allow_duplicate=True),
             Output("include-mixins-cats", "value"),
+            Output("tree-cats--hiddencount-mixins", "children"),
+            Output("tree-cats--hiddenbadge-mixins", "className"),
             Input("include-mixins-cats", "value"),
             Input("node-search-cats", "data"),
             Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
@@ -1121,13 +1174,13 @@ class BiolinkDashApp:
             search_nodes: Optional[List[str]],
             tab_trigger: int,
             version_tag: str
-        ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        ) -> Tuple[List[Dict[str, Any]], List[str], str, str]:
             """Filters category graph based on mixins and search."""
 
             # Get data from cache for the session's version
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data or not version_data.get('bm'): # Check if data/bm loaded
-                 return [], include_mixins
+                 return [], include_mixins, "", "bl-hidden-badge"
             bm = version_data['bm'] # Use the BM instance for THIS version
             elements_categories = version_data['elements_categories'] # Use elements for THIS version
 
@@ -1137,18 +1190,21 @@ class BiolinkDashApp:
                 if any(bm.category_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return (self.filter_graph(elements_categories,
-                                      [],
-                                      [],
-                                      include_mixins_updated,
-                                      search_nodes,
-                                      bm.category_dag,
-                                      bm),
-                    include_mixins_updated)
+            result = self.filter_graph(elements_categories, [], [], include_mixins_updated,
+                                       search_nodes, bm.category_dag, bm)
+            hidden_mixins = 0
+            if "include" not in include_mixins_updated:
+                with_mixins = self.filter_graph(elements_categories, [], [], ["include"],
+                                                search_nodes, bm.category_dag, bm)
+                hidden_mixins = self.count_nodes(with_mixins) - self.count_nodes(result)
+            mtext, mclass = self.hidden_pill(hidden_mixins, self._mixins_label(hidden_mixins))
+            return result, include_mixins_updated, mtext, mclass
 
         @self.app.callback(
             Output("elements-assoc", "data", allow_duplicate=True),
             Output("include-mixins-assoc", "value"),
+            Output("tree-assoc--hiddencount-mixins", "children"),
+            Output("tree-assoc--hiddenbadge-mixins", "className"),
             Input("include-mixins-assoc", "value"),
             Input("node-search-assoc", "data"),
             Input('tab-switch-trigger', 'value'),
@@ -1160,11 +1216,11 @@ class BiolinkDashApp:
             search_nodes: Optional[List[str]],
             tab_trigger: int,
             version_tag: str
-        ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        ) -> Tuple[List[Dict[str, Any]], List[str], str, str]:
             """Filters the association graph based on mixins and search."""
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data or not version_data.get('bm'):
-                return [], include_mixins
+                return [], include_mixins, "", "bl-hidden-badge"
             bm = version_data['bm']
             elements_associations = version_data['elements_associations']
 
@@ -1173,14 +1229,15 @@ class BiolinkDashApp:
                 if any(bm.association_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
                     include_mixins_updated = ["include"]
 
-            return (self.filter_graph(elements_associations,
-                                      [],
-                                      [],
-                                      include_mixins_updated,
-                                      search_nodes,
-                                      bm.association_dag,
-                                      bm),
-                    include_mixins_updated)
+            result = self.filter_graph(elements_associations, [], [], include_mixins_updated,
+                                       search_nodes, bm.association_dag, bm)
+            hidden_mixins = 0
+            if "include" not in include_mixins_updated:
+                with_mixins = self.filter_graph(elements_associations, [], [], ["include"],
+                                                search_nodes, bm.association_dag, bm)
+                hidden_mixins = self.count_nodes(with_mixins) - self.count_nodes(result)
+            mtext, mclass = self.hidden_pill(hidden_mixins, self._mixins_label(hidden_mixins))
+            return result, include_mixins_updated, mtext, mclass
 
         # Callback to display node info (Categories Tab)
         @self.app.callback(

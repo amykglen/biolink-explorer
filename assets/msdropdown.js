@@ -89,6 +89,17 @@
     }
 
     document.addEventListener("click", function (e) {
+        // "Show" on the hidden-content badge: check every listed checklist to reveal them.
+        var showBtn = e.target.closest && e.target.closest(".bl-hidden-badge-show");
+        if (showBtn) {
+            var badge = showBtn.closest(".bl-hidden-badge");
+            (badge && badge.getAttribute("data-reveal") || "").split(",").filter(Boolean).forEach(function (cbId) {
+                if (window.dash_clientside && window.dash_clientside.set_props) {
+                    window.dash_clientside.set_props(cbId, { value: ["include"] });
+                }
+            });
+            return;
+        }
         // "Clear filters" banner button: clear every listed Store at once.
         var bannerClear = e.target.closest && e.target.closest(".bl-filter-clear");
         if (bannerClear) {
