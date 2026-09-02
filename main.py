@@ -78,13 +78,16 @@ class BiolinkDashApp:
                 all_predicates = sorted(list(bm.predicate_dag.nodes()))
             else:
                 all_predicates = []
+            all_associations = sorted(list(bm.association_dag.nodes())) if bm.association_dag else []
             self.bm_cache[version] = {"bm": bm,
                                       "elements_predicates": elements_predicates,
                                       "elements_categories": elements_categories,
+                                      "elements_associations": bm.association_dag_dash,
                                       "domains": domains,
                                       "ranges": ranges,
                                       "all_categories": all_categories,
-                                      "all_predicates": all_predicates}
+                                      "all_predicates": all_predicates,
+                                      "all_associations": all_associations}
         return self.bm_cache[version]
 
     # -------------------------- Layout Generation Methods -------------------------- #
@@ -180,8 +183,12 @@ class BiolinkDashApp:
 
         def tab_body(filters_id, tree_id, info_id):
             # Which filter Stores this tab's "Filtered view" banner watches / can clear.
-            clear_stores = (["node-search-cats"] if "cats" in tree_id
-                            else ["node-search-preds", "domain-filter", "range-filter"])
+            if "cats" in tree_id:
+                clear_stores = ["node-search-cats"]
+            elif "assoc" in tree_id:
+                clear_stores = ["node-search-assoc"]
+            else:
+                clear_stores = ["node-search-preds", "domain-filter", "range-filter"]
             filter_banner = html.Div(
                 [
                     html.Span("Filtered view", className="bl-filter-banner-text"),
@@ -238,8 +245,10 @@ class BiolinkDashApp:
                     children=[
                         dcc.Store(id="elements-cats"),
                         dcc.Store(id="elements-preds"),
+                        dcc.Store(id="elements-assoc"),
                         dcc.Store(id="selected-cats"),
                         dcc.Store(id="selected-preds"),
+                        dcc.Store(id="selected-assoc"),
                         dcc.Store(id="render-signal"),  # clientside render callback target
                         dcc.Tabs(
                             id="tabs",
@@ -251,7 +260,10 @@ class BiolinkDashApp:
                                         children=[tab_body("category-filters-container", "tree-cats", "node-info-cats")]),
                                 dcc.Tab(label="Predicates", value="tab-2",
                                         style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
-                                        children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")])
+                                        children=[tab_body("predicate-filters-container", "tree-preds", "node-info-preds")]),
+                                dcc.Tab(label="Associations", value="tab-3",
+                                        style=self.styles.tab_style, selected_style=self.styles.tab_selected_style,
+                                        children=[tab_body("association-filters-container", "tree-assoc", "node-info-assoc")])
                             ]),
                     ],
                 ),
@@ -301,6 +313,16 @@ class BiolinkDashApp:
             [
                 self.get_search_filter("node-search-cats", all_categories or []),
                 self.get_checkbox_filter("include-mixins-cats", "Show mixins?", show_by_default=False),
+            ],
+            style=self.styles.filters_wrapper_style,
+        )
+
+    def get_filter_divs_assoc(self, all_associations: List[str]) -> html.Div:
+        """Generates the filter controls Div for the Associations tab (same shape as categories)."""
+        return html.Div(
+            [
+                self.get_search_filter("node-search-assoc", all_associations or []),
+                self.get_checkbox_filter("include-mixins-assoc", "Show mixins?", show_by_default=False),
             ],
             style=self.styles.filters_wrapper_style,
         )
@@ -523,7 +545,8 @@ class BiolinkDashApp:
 
     # ----------------------------- Helper Methods ------------------------------ #
 
-    def get_node_info(self, selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
+    def get_node_info(self, selected_nodes: Optional[List[Dict[str, Any]]],
+                      graph_type: str = "cats") -> Any:
         """
         Generates the content of the right-hand detail panel for the selected node:
         a header (id, docs link, status badges), a domain -> range / inverse section
@@ -532,6 +555,8 @@ class BiolinkDashApp:
         Args:
             selected_nodes: A list containing a single selected node's data dict
                             (``{"id": ..., "attributes": {...}}``), or falsy if none.
+            graph_type: which tab the node belongs to ("cats", "preds", or "assoc") —
+                        controls the "focus" button's target search box and wording.
         """
         if not selected_nodes or not selected_nodes[0] or "id" not in selected_nodes[0]:
             return html.Div(
@@ -563,9 +588,9 @@ class BiolinkDashApp:
             style={"minWidth": "0"},
         )
 
-        # "Filter graph to this node" icon button (adds it to the search dropdown on this tab)
-        button_id = "filter-to-node-preds" if is_predicate else "filter-to-node-cats"
-        item_word = "predicate" if is_predicate else "category"
+        # "Focus graph on this node" icon button (adds it to the search dropdown on this tab)
+        button_id = f"filter-to-node-{graph_type}"
+        item_word = {"cats": "category", "preds": "predicate", "assoc": "association"}.get(graph_type, "item")
         filter_button = html.Button(
             self.get_target_icon(self.styles.accent_dark),
             id=button_id, n_clicks=0, title=f"Focus the graph on this {item_word}",
@@ -619,6 +644,32 @@ class BiolinkDashApp:
                 "Inverse predicate",
                 chip(inverse_val, self.styles.chip_grey, self.styles.text) if inverse_val
                 else self.format_detail_value(None)))
+
+        # --- Association shape (subject -> predicate -> object) — the schema constraints
+        # that define what this association connects. Predicate is a pinned predicate, an
+        # enum of allowed predicates, or "any" when unconstrained. ---
+        if graph_type == "assoc":
+            subj = attributes.get("assoc_subject")
+            obj = attributes.get("assoc_object")
+            pred = attributes.get("assoc_predicate")
+
+            def spo_arrow():
+                return html.Span("→", style={"margin": "0 6px", "color": self.styles.text_muted,
+                                             "fontSize": "14px"})
+            pred_chip = (chip(pred, self.styles.chip_purple, self.styles.chip_purple_text, chip_value=pred)
+                         if pred else
+                         chip("any", self.styles.chip_grey, self.styles.text_muted, chip_value=None))
+            spo = html.Div(
+                [
+                    chip(subj if subj else "—", self.styles.chip_domain, chip_value=subj),
+                    spo_arrow(),
+                    pred_chip,
+                    spo_arrow(),
+                    chip(obj if obj else "—", self.styles.chip_domain, chip_value=obj),
+                ],
+                style={"display": "flex", "alignItems": "center", "flexWrap": "wrap", "gap": "4px"},
+            )
+            sections.append(self.get_detail_section("Subject → Predicate → Object", spo))
 
         # --- Free-text metadata ---
         sections.append(self.get_detail_section("Description", self.format_detail_value(attributes.get("description"))))
@@ -853,7 +904,9 @@ class BiolinkDashApp:
 
     def get_search_filter(self, filter_id: str, node_names: List[str]) -> html.Div:
         """Creates a search dropdown component."""
-        label_text = "Search predicates" if "pred" in filter_id else "Search categories"
+        label_text = ("Search predicates" if "pred" in filter_id
+                      else "Search associations" if "assoc" in filter_id
+                      else "Search categories")
         return html.Div(
             [
                 html.Label(label_text, style=self.styles.filter_label_style),
@@ -969,7 +1022,7 @@ class BiolinkDashApp:
         # harmless — the SVG viewBox auto-fits once the container becomes visible.
         self.app.clientside_callback(
             """
-            function(catElements, predElements, tabTrigger) {
+            function(catElements, predElements, assocElements, tabTrigger) {
                 function draw(containerId, elements, selectedStoreId, graphType) {
                     function go() {
                         var el = document.getElementById(containerId);
@@ -984,12 +1037,14 @@ class BiolinkDashApp:
                 }
                 draw("tree-cats", catElements, "selected-cats", "cats");
                 draw("tree-preds", predElements, "selected-preds", "preds");
+                draw("tree-assoc", assocElements, "selected-assoc", "assoc");
                 return window.dash_clientside.no_update;
             }
             """,
             Output("render-signal", "data"),
             Input("elements-cats", "data"),
             Input("elements-preds", "data"),
+            Input("elements-assoc", "data"),
             Input("tab-switch-trigger", "value"),
         )
 
@@ -1091,6 +1146,42 @@ class BiolinkDashApp:
                                       bm),
                     include_mixins_updated)
 
+        @self.app.callback(
+            Output("elements-assoc", "data", allow_duplicate=True),
+            Output("include-mixins-assoc", "value"),
+            Input("include-mixins-assoc", "value"),
+            Input("node-search-assoc", "data"),
+            Input('tab-switch-trigger', 'value'),
+            State('session-biolink-version-store', 'data'),
+            prevent_initial_call=True
+        )
+        def filter_graph_associations(
+            include_mixins: List[str],
+            search_nodes: Optional[List[str]],
+            tab_trigger: int,
+            version_tag: str
+        ) -> Tuple[List[Dict[str, Any]], List[str]]:
+            """Filters the association graph based on mixins and search."""
+            version_data = self.get_biolink_data_for_version(version_tag)
+            if not version_data or not version_data.get('bm'):
+                return [], include_mixins
+            bm = version_data['bm']
+            elements_associations = version_data['elements_associations']
+
+            include_mixins_updated = include_mixins
+            if search_nodes:
+                if any(bm.association_dag.nodes[node_id].get("is_mixin") for node_id in search_nodes):
+                    include_mixins_updated = ["include"]
+
+            return (self.filter_graph(elements_associations,
+                                      [],
+                                      [],
+                                      include_mixins_updated,
+                                      search_nodes,
+                                      bm.association_dag,
+                                      bm),
+                    include_mixins_updated)
+
         # Callback to display node info (Categories Tab)
         @self.app.callback(
             Output("node-info-cats", "children"),
@@ -1098,7 +1189,7 @@ class BiolinkDashApp:
         )
         def display_node_info_categories(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
             """Displays information for the selected category node."""
-            return self.get_node_info(selected_nodes)
+            return self.get_node_info(selected_nodes, "cats")
 
         # Callback to display node info (Predicates Tab)
         @self.app.callback(
@@ -1107,7 +1198,16 @@ class BiolinkDashApp:
         )
         def display_node_info_predicates(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
             """Displays information for the selected predicate node."""
-            return self.get_node_info(selected_nodes)
+            return self.get_node_info(selected_nodes, "preds")
+
+        # Callback to display node info (Associations Tab)
+        @self.app.callback(
+            Output("node-info-assoc", "children"),
+            Input("selected-assoc", "data"),
+        )
+        def display_node_info_associations(selected_nodes: Optional[List[Dict[str, Any]]]) -> Any:
+            """Displays information for the selected association node."""
+            return self.get_node_info(selected_nodes, "assoc")
 
         # "Filter graph to this node" buttons: add the selected node to the search dropdown
         def add_selected_to_search(n_clicks, selected_nodes, current_search):
@@ -1141,12 +1241,22 @@ class BiolinkDashApp:
         def filter_to_selected_predicate(n_clicks, selected_nodes, current_search):
             return add_selected_to_search(n_clicks, selected_nodes, current_search)
 
+        @self.app.callback(
+            Output("node-search-assoc", "data"),
+            Input("filter-to-node-assoc", "n_clicks"),
+            State("selected-assoc", "data"),
+            State("node-search-assoc", "data"),
+            prevent_initial_call=True,
+        )
+        def filter_to_selected_association(n_clicks, selected_nodes, current_search):
+            return add_selected_to_search(n_clicks, selected_nodes, current_search)
+
         # Keep each custom multiselect in sync with its selection (the Store data): update
         # the trigger text (empty -> the CSS :empty placeholder shows) and the checked state
         # of the option rows. Driven off the Store so it reflects programmatic changes too
         # (e.g. the "focus the graph on this item" button).
-        for search_id in ["node-search-cats", "node-search-preds", "domain-filter",
-                          "range-filter"]:
+        for search_id in ["node-search-cats", "node-search-preds", "node-search-assoc",
+                          "domain-filter", "range-filter"]:
             self.app.clientside_callback(
                 f"""
                 function(data) {{
@@ -1189,6 +1299,13 @@ class BiolinkDashApp:
             Input("range-filter", "data"),
             prevent_initial_call=True,
         )
+        self.app.clientside_callback(
+            "function(s){ return (s && s.length) ? 'bl-filter-banner bl-filter-banner-visible'"
+            " : 'bl-filter-banner'; }",
+            Output("tree-assoc--filterbanner", "className"),
+            Input("node-search-assoc", "data"),
+            prevent_initial_call=True,
+        )
 
         # Update the session store when version dropdown changes
         @self.app.callback(
@@ -1209,25 +1326,28 @@ class BiolinkDashApp:
         @self.app.callback(
             Output('elements-cats', 'data'),
             Output('elements-preds', 'data'),
+            Output('elements-assoc', 'data'),
             Output('category-filters-container', 'children'),
             Output('predicate-filters-container', 'children'),
+            Output('association-filters-container', 'children'),
             Output('biolink-version-link', 'children'),
             Input('session-biolink-version-store', 'data') # Triggered by store change
         )
         def update_ui_for_version(version_tag):
             if not version_tag:
-                return [], [], [], [], html.A() # Handle initial or error state
+                return [], [], [], [], [], [], html.A() # Handle initial or error state
 
             # Get data from cache for the session's version
             version_data = self.get_biolink_data_for_version(version_tag)
             if not version_data: # Handle case where loading failed
-                 return [], [], [], [], html.A("Error loading version", href="#")
+                 return [], [], [], [], [], [], html.A("Error loading version", href="#")
 
             # Generate filter divs using data for this version
             cat_filters = self.get_filter_divs_cats(version_data['all_categories'])
             pred_filters = self.get_filter_divs_preds(version_data['all_predicates'],
                                                       version_data['domains'],
                                                       version_data['ranges'])
+            assoc_filters = self.get_filter_divs_assoc(version_data['all_associations'])
 
             # Generate version link
             # Use actual version from bm instance if possible, otherwise use tag
@@ -1247,8 +1367,10 @@ class BiolinkDashApp:
             # are hidden by default (matching the unchecked "Show non-canonical?" box).
             return (version_data['elements_categories'],
                     self.remove_noncanonical(version_data['elements_predicates']),
+                    version_data['elements_associations'],
                     cat_filters,
                     pred_filters,
+                    assoc_filters,
                     version_link)
 
         # Callback to update the hidden trigger on tab switch

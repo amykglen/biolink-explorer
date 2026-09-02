@@ -31,8 +31,10 @@ from networkx.readwrite import json_graph
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ROOT_CATEGORY = "NamedThing"
 DEFAULT_ROOT_PREDICATE = "related_to"
+DEFAULT_ROOT_ASSOCIATION = "Association"
 ROOT_CATEGORY_ENGLISH = "named thing"
 ROOT_PREDICATE_ENGLISH = "related to"
+ROOT_ASSOCIATION_ENGLISH = "association"
 CORE_NX_PROPERTIES = {"id", "source", "target"}
 GITHUB_TAGS_URL = "https://api.github.com/repos/biolink/biolink-model/tags"
 GITHUB_RAW_CONTENT_URL_TEMPLATE = "https://raw.githubusercontent.com/biolink/biolink-model/{version_tag}/biolink-model.yaml"
@@ -102,6 +104,7 @@ class BiolinkManager:
         """
         self.root_category: str = DEFAULT_ROOT_CATEGORY
         self.root_predicate: str = DEFAULT_ROOT_PREDICATE
+        self.root_association: str = DEFAULT_ROOT_ASSOCIATION
         self.core_nx_properties: Set[str] = CORE_NX_PROPERTIES
 
         self.biolink_tags = get_biolink_github_tags()
@@ -124,6 +127,8 @@ class BiolinkManager:
         self.category_dag_dash = self.convert_to_dash_format(self.category_dag)
         self.predicate_dag = self.build_predicate_dag()
         self.predicate_dag_dash = self.convert_to_dash_format(self.predicate_dag)
+        self.association_dag = self.build_association_dag()
+        self.association_dag_dash = self.convert_to_dash_format(self.association_dag)
 
         logging.info(f"Done loading BiolinkManager for version {self.biolink_version}.")
 
@@ -250,6 +255,85 @@ class BiolinkManager:
                 predicate_dag.nodes[inverse_id]["inverse"] = node_id
 
         return predicate_dag
+
+    def build_association_dag(self) -> nx.DiGraph:
+        """
+        Builds the hierarchy of association classes (Biolink's edge/statement types, e.g.
+        GeneToDiseaseAssociation). Associations are classes that live under 'association' —
+        a sibling of 'named thing' under 'entity' — so they're absent from the category DAG.
+        Structure/metadata mirror categories (is_a + mixins, description/notes/aliases).
+        """
+        logging.info("Building association graph..")
+        dag = nx.DiGraph()
+        tk = self.toolkit
+        english_name = {}  # camelCase id -> the schema's English name (for induced-slot lookups)
+
+        for class_name_english in tk.get_all_classes(formatted=False):
+            element = tk.get_element(class_name_english)
+            if element is None:
+                continue
+            class_name = sentencecase_to_camelcase(class_name_english)
+            english_name[class_name] = class_name_english
+            if element.is_a:
+                dag.add_edge(sentencecase_to_camelcase(element.is_a), class_name)
+            for mixin_english in (element.mixins or []):
+                dag.add_edge(sentencecase_to_camelcase(mixin_english), class_name)
+            self.add_node_if_doesnt_exist(dag, class_name)
+            self.record_common_metadata(dag.nodes[class_name], element)
+
+        # Keep the 'association' subtree, plus mixins that parent one of those associations
+        # (so 'Show mixins?' reveals the relevant multiple-inheritance, without dragging in
+        # unrelated category mixins).
+        if not dag.has_node(self.root_association):
+            return nx.DiGraph()  # no associations in this (older) version
+        assoc_core = self.get_descendants(dag, self.root_association)
+        keep = set(assoc_core)
+        for node_id, data in dag.nodes(data=True):
+            if data.get("is_mixin") and any(child in assoc_core for child in dag.successors(node_id)):
+                keep.add(node_id)
+        for node_id in [n for n in dag.nodes() if n not in keep]:
+            dag.remove_node(node_id)
+
+        # Record each association's defining shape: subject -> predicate -> object. These come
+        # from the (inherited) slot constraints, and are what actually make an association type
+        # meaningful. Stored under distinct keys so they don't collide with predicate domain/range.
+        for node_id in dag.nodes():
+            subject, predicate, obj = self.get_association_spo(english_name.get(node_id))
+            if subject:
+                dag.nodes[node_id]["assoc_subject"] = subject
+            if predicate:
+                dag.nodes[node_id]["assoc_predicate"] = predicate
+            if obj:
+                dag.nodes[node_id]["assoc_object"] = obj
+
+        return dag
+
+    def get_association_spo(self, assoc_name_english: Optional[str]):
+        """
+        Returns (subject_category, predicate_constraint, object_category) for an association
+        class, resolving inherited constraints. The predicate constraint is a specific
+        predicate (when the association pins one) or an enum name (when it restricts the
+        predicate to a set), or None when the predicate is unconstrained.
+        """
+        if not assoc_name_english:
+            return None, None, None
+        sv = self.toolkit.view
+        try:
+            subj_slot = sv.induced_slot("subject", assoc_name_english)
+            obj_slot = sv.induced_slot("object", assoc_name_english)
+            pred_slot = sv.induced_slot("predicate", assoc_name_english)
+        except Exception:
+            return None, None, None
+
+        subject = sentencecase_to_camelcase(subj_slot.range) if subj_slot and subj_slot.range else None
+        obj = sentencecase_to_camelcase(obj_slot.range) if obj_slot and obj_slot.range else None
+        predicate = None
+        if pred_slot:
+            if pred_slot.subproperty_of:  # a specific pinned predicate, e.g. 'contributor'
+                predicate = sentencecase_to_snakecase(pred_slot.subproperty_of)
+            elif pred_slot.range and sv.get_enum(pred_slot.range) is not None:  # restricted to an enum
+                predicate = pred_slot.range
+        return subject, predicate, obj
 
     @staticmethod
     def record_common_metadata(node: dict, element) -> None:
