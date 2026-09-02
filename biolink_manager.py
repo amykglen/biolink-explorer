@@ -219,6 +219,12 @@ class BiolinkManager:
             node["range"] = sentencecase_to_camelcase(element.range) if element.range else None
             if element.inverse:
                 node["inverse"] = sentencecase_to_snakecase(element.inverse)
+            # 'opposite of' is recorded as an annotation (distinct from 'inverse')
+            opposite_ann = (element.annotations or {}).get("opposite_of")
+            if opposite_ann is not None:
+                opposite_val = getattr(opposite_ann, "value", opposite_ann)
+                if opposite_val:
+                    node["opposite_of"] = sentencecase_to_snakecase(opposite_val)
             self.record_common_metadata(node, element)
 
             # Record relationship between this node and its parent, if provided

@@ -243,6 +243,11 @@
         // Nodes (circle + side label)
         var nodeLayer = g.append("g");
         var current = { state: null, paint: null };  // the selected node
+        // Click target height: fill the whole vertical row gap so there are no dead zones
+        // between rows (with a comfortable floor for very dense graphs, and a cap so airy
+        // graphs don't get an absurdly tall target).
+        var HIT_H = Math.min(Math.max(ROW, 20), 34);
+        var HIT_PAD = 8;  // extra clickable padding around the circle
         Object.keys(pos).forEach(function (id) {
             var it = info[id]; if (!it) return;
             var p = pos[id], internal = p.internal;
@@ -260,10 +265,13 @@
                 .attr("font-family", FONT_FAMILY).attr("font-size", FONT_SIZE)
                 .attr("stroke", P.bg).attr("stroke-width", 4.5).attr("paint-order", "stroke")  // legibility halo
                 .attr("pointer-events", "none").text(it.label);
-            // transparent hit area covering circle + label
+            // transparent hit area covering circle + label (generously padded so nodes
+            // are easy to click)
             ng.append("rect")
-                .attr("x", internal ? -(base.r + 3 + LABEL_GAP + it.labelW) : -(base.r + 3))
-                .attr("y", -9).attr("width", (base.r + 3) * 2 + LABEL_GAP + it.labelW).attr("height", 18)
+                .attr("x", internal ? -(base.r + HIT_PAD + LABEL_GAP + it.labelW) : -(base.r + HIT_PAD))
+                .attr("y", -HIT_H / 2)
+                .attr("width", (base.r + HIT_PAD) * 2 + LABEL_GAP + it.labelW)
+                .attr("height", HIT_H)
                 .attr("fill", "transparent");
 
             function paint() {
@@ -282,6 +290,11 @@
 
             ng.on("mouseover", function () { state.hover = true; paint(); });
             ng.on("mouseout", function () { state.hover = false; paint(); });
+            // Pressing on a node must NOT start a zoom/pan gesture — otherwise a tiny mouse
+            // jitter pans the graph a hair and the click lands on empty space instead of the
+            // node (the "hover works but click misses unless dead-center" problem). Swallow
+            // the mousedown here so panning only starts from empty canvas.
+            ng.on("mousedown", function (event) { event.stopPropagation(); });
             ng.on("click", function (event) {
                 event.stopPropagation();
                 if (current.state && current.state !== state) { current.state.sel = false; current.paint(); }
@@ -296,13 +309,18 @@
         var didPan = false;
         var zoom = d3.zoom().scaleExtent([0.08, 4])
             .extent(function () { return [[0, 0], [container.clientWidth || 1, container.clientHeight || 1]]; })
-            .on("start", function () {
+            .on("start", function (event) {
                 didPan = false;
-                // Any interaction with the graph should dismiss an open dropdown. d3.zoom
+                // A real interaction with the graph should dismiss an open dropdown. d3.zoom
                 // stops the real mousedown from reaching the document, so dropdowns (which
                 // close on an outside mousedown) never see it — dispatch a synthetic one.
-                document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-                if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+                // Only for real gestures (event.sourceEvent) — NOT programmatic transforms
+                // like the initial fit, which would otherwise close a dropdown on every graph
+                // re-render (e.g. right after you pick an option).
+                if (event && event.sourceEvent) {
+                    document.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+                }
             })
             .on("zoom", function (event) {
                 g.attr("transform", event.transform);

@@ -7,6 +7,145 @@ html, body {
 
 /* (The main container height is managed by the layout in main.py, not here.) */
 
+/* ---- Custom searchable multi-select (.bl-ms-*, replaces dcc.Dropdown) ---- */
+.bl-ms-wrapper { position: relative; width: 100%; font-size: 13px; }
+
+.bl-ms-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 2px 8px;
+    border: 1px solid #e6e3de;
+    border-radius: 6px;
+    background: #fefefc;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.bl-ms-control:hover { border-color: #7bbcb4; }
+/* Active (has a selection): tinted so it's obvious a filter is set. */
+.bl-ms-wrapper.bl-ms-has-value .bl-ms-control {
+    border-color: #7bbcb4;
+    background: #eef6f4;
+}
+.bl-ms-wrapper.bl-ms-open .bl-ms-control {
+    border-color: #2d8f83;
+    box-shadow: 0 0 0 2px #e4f0ee;
+}
+.bl-ms-display {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #2a2825;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 2px 0;
+}
+.bl-ms-display:empty::before { content: attr(data-placeholder); color: #a29a8d; }
+/* Clear "×" — only shown when there's a selection; clears without opening the popup. */
+.bl-ms-clear {
+    flex: 0 0 auto;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    color: #a29a8d;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.bl-ms-wrapper.bl-ms-has-value .bl-ms-clear { display: inline-flex; }
+.bl-ms-clear:hover { color: #2a2825; background: #efeee9; }
+.bl-ms-arrow {
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    display: block;
+    transition: transform 0.15s ease;
+}
+.bl-ms-wrapper.bl-ms-open .bl-ms-arrow { transform: rotate(180deg); }
+
+/* The popup is wider than its (compact) trigger so long option names don't wrap. It
+   opens rightward by default, or leftward for right-aligned controls (domain/range) so
+   it stays on-screen. */
+.bl-ms-popup {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: auto;
+    width: var(--bl-ms-popup-w, 350px);
+    min-width: 100%;
+    background: #fefefc;
+    border: 1px solid #e6e3de;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px -12px rgba(42, 40, 37, 0.3);
+    z-index: 50;
+    padding: 8px;
+    box-sizing: border-box;
+}
+.bl-ms-wrapper.bl-ms-right .bl-ms-popup { left: auto; right: 0; }
+.bl-ms-wrapper.bl-ms-open .bl-ms-popup { display: block; }
+
+.bl-ms-search {
+    width: 100%;
+    box-sizing: border-box;
+    height: 30px;
+    padding: 4px 9px;
+    border: 1px solid #e6e3de;
+    border-radius: 5px;
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 6px;
+    color: #2a2825;
+    background: #fefefc;
+    font-family: inherit;
+}
+.bl-ms-search:focus { border-color: #2d8f83; box-shadow: 0 0 0 2px #e4f0ee; }
+
+.bl-ms-options { max-height: 300px; overflow-y: auto; }
+
+.bl-ms-option {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #2a2825;
+    line-height: 1.3;
+}
+.bl-ms-option:hover { background: #eef4f2; }
+/* custom checkbox */
+.bl-ms-check {
+    flex: 0 0 auto;
+    width: 15px;
+    height: 15px;
+    border: 1.5px solid #cecac3;
+    border-radius: 4px;
+    background: #fefefc;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+.bl-ms-option.bl-ms-selected .bl-ms-check {
+    background: #2d8f83;
+    border-color: #2d8f83;
+}
+.bl-ms-option.bl-ms-selected .bl-ms-check::after {
+    content: "✓";
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+}
+.bl-ms-optlabel { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.bl-ms-hidden { display: none !important; }
+
 /* ---- Dropdowns & checklists (dcc.Dropdown / dcc.Checklist, Dash 4 native) ---- */
 /* Accent tokens: teal #2d8f83 (dark #1f6d64, tint #e4f0ee); neutral border #e6e3de */
 
@@ -45,7 +184,13 @@ html, body {
     box-shadow: 0 0 0 2px #e4f0ee;
     outline: none;
 }
-/* Kill the fleeting native (purple) focus ring on the trigger container */
+/* Kill the fleeting native (purple) focus ring. It appears on the dropdown ROOT
+   (.dash-dropdown) itself on click — which briefly focuses before focus moves into the
+   popup — as well as on the trigger / grid container. */
+.dash-dropdown,
+.dash-dropdown:focus,
+.dash-dropdown:focus-visible,
+.dash-dropdown:focus-within,
 .dash-dropdown-grid-container,
 .dash-dropdown-trigger,
 .dash-dropdown-trigger:active,
@@ -80,8 +225,33 @@ html, body {
     outline: none !important;
 }
 .dash-dropdown-search-container:focus-within {
-    border-color: #2d8f83 !important;
-    box-shadow: 0 0 0 2px #e4f0ee;
+    /* No focus ring on the in-popup search box — it sits inside an already-bordered
+       popup, so the ring is redundant and reads as a blue flash when it autofocuses. */
+    border-color: #e6e3de !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Belt-and-suspenders: Dash paints a purple focus outline (its accent,
+   var(--Dash-Fill-Interactive-Strong)) on various dropdown parts and states. Kill it on
+   the dropdown root AND every descendant, in every focus/active state, for both the
+   trigger and the (portaled) popup — our own border/box-shadow is the focus indicator. */
+.dash-dropdown,
+.dash-dropdown:focus,
+.dash-dropdown:focus-visible,
+.dash-dropdown:focus-within,
+.dash-dropdown:active,
+.dash-dropdown *:focus,
+.dash-dropdown *:focus-visible,
+.dash-dropdown *:focus-within,
+.dash-dropdown *:active,
+.dash-dropdown-content,
+.dash-dropdown-content *:focus,
+.dash-dropdown-content *:focus-visible,
+.dash-dropdown-content *:focus-within,
+.dash-dropdown-content *:active,
+.dash-dropdown-clear:focus,
+.dash-dropdown-clear:focus-visible {
     outline: none !important;
 }
 .dash-dropdown-search {
@@ -167,6 +337,42 @@ html, body {
 .dash-dropdown-options .dash-options-list-option-wrapper:hover {
     background: #eef4f2;
 }
+/* "Filtered view" banner overlaid at the top of the graph when any filter is active. */
+.bl-filter-banner {
+    display: none;
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px 5px 14px;
+    background: #fbf1d5;
+    border: 1px solid #e3c977;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px -6px rgba(42, 40, 37, 0.25);
+    font-size: 12.5px;
+    color: #6b5518;
+    white-space: nowrap;
+}
+.bl-filter-banner.bl-filter-banner-visible { display: inline-flex; }
+.bl-filter-banner-text { font-weight: 600; }
+.bl-filter-banner-text::before { content: "⚑"; margin-right: 6px; }
+.bl-filter-clear {
+    border: none;
+    background: rgba(107, 85, 24, 0.12);
+    color: #6b5518;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background-color 0.12s ease;
+}
+.bl-filter-clear:hover { background: rgba(107, 85, 24, 0.22); }
+
 /* Zoom controls overlaid on the graph (bottom-right of each tree container) */
 .bl-zoom-controls {
     position: absolute;

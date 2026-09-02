@@ -179,6 +179,17 @@ class BiolinkDashApp:
                       "position": "relative"}  # anchors the overlaid zoom controls
 
         def tab_body(filters_id, tree_id, info_id):
+            # Which filter Stores this tab's "Filtered view" banner watches / can clear.
+            clear_stores = (["node-search-cats"] if "cats" in tree_id
+                            else ["node-search-preds", "domain-filter", "range-filter"])
+            filter_banner = html.Div(
+                [
+                    html.Span("Filtered view", className="bl-filter-banner-text"),
+                    html.Button("Clear filters", className="bl-filter-clear",
+                                **{"data-clear": ",".join(clear_stores)}),
+                ],
+                id=f"{tree_id}--filterbanner", className="bl-filter-banner",
+            )
             return html.Div(
                 style=tab_row_style,
                 children=[
@@ -186,7 +197,15 @@ class BiolinkDashApp:
                         style=graph_col_style,
                         children=[
                             html.Div(id=filters_id),  # filters populated by callback
-                            html.Div(id=tree_id, className="tree-container", style=tree_style),
+                            # Graph area (relative) so the "Filtered view" banner can overlay it.
+                            html.Div(
+                                style={"position": "relative", "flex": "1 1 auto", "minHeight": "0",
+                                       "display": "flex"},
+                                children=[
+                                    html.Div(id=tree_id, className="tree-container", style=tree_style),
+                                    filter_banner,
+                                ],
+                            ),
                         ],
                     ),
                     # Detail panel: a resize handle + the (callback-updated) content
@@ -255,14 +274,8 @@ class BiolinkDashApp:
                             [
                                 html.Label("Filter by domain", title=hierarchical_tip,
                                            style={**self.styles.filter_label_style, "cursor": "help"}),
-                                dcc.Dropdown(
-                                    id="domain-filter",
-                                    options=[{"label": d, "value": d} for d in domains or []],
-                                    multi=True,
-                                    placeholder="Select domains…",
-                                    className="bl-multi-dropdown",
-                                    maxHeight=420,
-                                ),
+                                self.get_multiselect("domain-filter", domains or [], "Select domains…",
+                                                     right_align=True),
                             ],
                             style=filter_div_style,
                         ),
@@ -270,14 +283,8 @@ class BiolinkDashApp:
                             [
                                 html.Label("Filter by range", title=hierarchical_tip,
                                            style={**self.styles.filter_label_style, "cursor": "help"}),
-                                dcc.Dropdown(
-                                    id="range-filter",
-                                    options=[{"label": r, "value": r} for r in ranges or []],
-                                    multi=True,
-                                    placeholder="Select ranges…",
-                                    className="bl-multi-dropdown",
-                                    maxHeight=420,
-                                ),
+                                self.get_multiselect("range-filter", ranges or [], "Select ranges…",
+                                                     right_align=True),
                             ],
                             style=filter_div_style,
                         ),
@@ -560,8 +567,8 @@ class BiolinkDashApp:
         button_id = "filter-to-node-preds" if is_predicate else "filter-to-node-cats"
         item_word = "predicate" if is_predicate else "category"
         filter_button = html.Button(
-            self.get_funnel_icon(self.styles.accent_dark),
-            id=button_id, n_clicks=0, title=f"Filter the graph to this {item_word}",
+            self.get_target_icon(self.styles.accent_dark),
+            id=button_id, n_clicks=0, title=f"Focus the graph on this {item_word}",
             className="filter-icon-btn", style=self.styles.filter_icon_button_style,
         )
 
@@ -605,15 +612,28 @@ class BiolinkDashApp:
                 style={"display": "flex", "alignItems": "center", "flexWrap": "wrap", "gap": "4px"},
             )
             sections.append(self.get_detail_section("Domain → Range", relationship))
+            # Always show this (with a "—" when empty) so the panel layout is consistent
+            # as you flip between predicates.
             inverse_val = attributes.get("inverse")
-            if inverse_val:
-                sections.append(self.get_detail_section(
-                    "Inverse predicate", chip(inverse_val, self.styles.chip_grey, self.styles.text)))
+            sections.append(self.get_detail_section(
+                "Inverse predicate",
+                chip(inverse_val, self.styles.chip_grey, self.styles.text) if inverse_val
+                else self.format_detail_value(None)))
 
         # --- Free-text metadata ---
         sections.append(self.get_detail_section("Description", self.format_detail_value(attributes.get("description"))))
         sections.append(self.get_detail_section("Notes", self.format_detail_value(attributes.get("notes"))))
         sections.append(self.get_detail_section("Aliases", self.format_detail_value(attributes.get("aliases"))))
+
+        # 'Opposite of' lives at the very bottom — it points AWAY from this predicate (a
+        # "see also"), so keeping it out of the main summary avoids muddying what this
+        # predicate itself means.
+        if is_predicate:
+            opposite_val = attributes.get("opposite_of")
+            sections.append(self.get_detail_section(
+                "Opposite of",
+                chip(opposite_val, self.styles.chip_grey, self.styles.text) if opposite_val
+                else self.format_detail_value(None)))
 
         return sections
 
@@ -625,15 +645,16 @@ class BiolinkDashApp:
         ])
 
     @staticmethod
-    def get_funnel_icon(color: str) -> html.Img:
-        """A classic filter/funnel icon (inline SVG), stroked in the given color."""
+    def get_target_icon(color: str) -> html.Img:
+        """A target / focus icon (concentric circles, inline SVG), in the given color."""
         svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
             f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
+            '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>'
+            '<circle cx="12" cy="12" r="1.4" fill="' + color + '"/></svg>'
         )
         src = "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
-        return html.Img(src=src, style={"width": "15px", "height": "15px", "display": "block"})
+        return html.Img(src=src, style={"width": "16px", "height": "16px", "display": "block"})
 
     @staticmethod
     def get_info_icon(color: str) -> html.Img:
@@ -836,16 +857,71 @@ class BiolinkDashApp:
         return html.Div(
             [
                 html.Label(label_text, style=self.styles.filter_label_style),
-                dcc.Dropdown(
-                    id=filter_id,
-                    options=[{"label": name, "value": name} for name in sorted(node_names)],
-                    multi=True,
-                    placeholder="Type to filter to lineages…",
-                    className="bl-multi-dropdown",
-                    maxHeight=420,
-                ),
+                self.get_multiselect(filter_id, node_names, "Type to filter to lineages…",
+                                     popup_width="405px" if "pred" in filter_id else "355px"),
             ],
-            style={"width": "280px"},
+            style={"width": "230px"},
+        )
+
+    def get_multiselect(self, filter_id: str, option_names: List[str], placeholder: str,
+                        right_align: bool = False, multi: bool = True,
+                        initial_value: Optional[str] = None, popup_width: str = "355px") -> html.Div:
+        """
+        A custom searchable multi-select control (replaces dcc.Dropdown, which virtualizes
+        its option list and mis-sizes the popup on reopen). The selection lives in a plain,
+        NON-virtualized dcc.Checklist with this ``filter_id`` — so its ``value`` is the same
+        list shape the old dropdown exposed and existing callbacks work unchanged. Open/close,
+        type-to-filter and the trigger's display text are wired up in assets/msdropdown.js and
+        a small clientside callback (see register_callbacks).
+        """
+        # Options are plain clickable rows (NOT a dcc.Checklist / dcc.Dropdown — both
+        # virtualize their option list, which is the whole source of the popup-height bug).
+        # 150-ish rows render fine as plain DOM. Selection lives in the dcc.Store below.
+        rows = [
+            html.Div(
+                [html.Span(className="bl-ms-check"), html.Span(name, className="bl-ms-optlabel")],
+                className="bl-ms-option", **{"data-value": name},
+            )
+            for name in sorted(option_names)
+        ]
+        return html.Div(
+            [
+                # Trigger / control: shows the current selection (or the placeholder via CSS)
+                html.Div(
+                    [
+                        html.Span(initial_value if (not multi and initial_value) else None,
+                                  id=f"{filter_id}--display", className="bl-ms-display",
+                                  **{"data-placeholder": placeholder}),
+                        html.Span("×", className="bl-ms-clear", title="Clear selection",
+                                  **{"aria-label": "Clear selection"}),
+                        html.Img(src="data:image/svg+xml;utf8," + urllib.parse.quote(
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" '
+                            'viewBox="0 0 24 24" fill="none" stroke="#a29a8d" stroke-width="2.5" '
+                            'stroke-linecap="round" stroke-linejoin="round">'
+                            '<polyline points="6 9 12 15 18 9"/></svg>'),
+                            className="bl-ms-arrow"),
+                    ],
+                    className="bl-ms-control",
+                ),
+                # Popup: a search box + the scrollable list of option rows
+                html.Div(
+                    [
+                        dcc.Input(id=f"{filter_id}--search", type="search",
+                                  placeholder="Search…", autoComplete="off",
+                                  className="bl-ms-search"),
+                        html.Div(rows, className="bl-ms-options"),
+                    ],
+                    className="bl-ms-popup",
+                ),
+                # The selection — the component the callbacks read via its "data" prop. For a
+                # multi-select that's the list of values (same shape the old dropdown's "value"
+                # had); for a single-select it's the one selected value (a string).
+                dcc.Store(id=filter_id, data=(initial_value if not multi else [])),
+            ],
+            className="bl-ms-wrapper" + (" bl-ms-right" if right_align else "")
+                      + ("" if multi else " bl-ms-single"),
+            style={"--bl-ms-popup-w": popup_width},
+            **{"data-store": filter_id},
         )
 
     def get_chip_style(
@@ -923,11 +999,11 @@ class BiolinkDashApp:
             Output("elements-preds", "data", allow_duplicate=True),
             Output("include-mixins-preds", "value"),
             Output("include-noncanonical-preds", "value"),
-            Input("domain-filter", "value"),
-            Input("range-filter", "value"),
+            Input("domain-filter", "data"),
+            Input("range-filter", "data"),
             Input("include-mixins-preds", "value"),
             Input("include-noncanonical-preds", "value"),
-            Input("node-search-preds", "value"),
+            Input("node-search-preds", "data"),
             Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
             State('session-biolink-version-store', 'data'),  # READ version from store
             prevent_initial_call=True  # Prevent initial call for filtering
@@ -980,7 +1056,7 @@ class BiolinkDashApp:
             Output("elements-cats", "data", allow_duplicate=True),
             Output("include-mixins-cats", "value"),
             Input("include-mixins-cats", "value"),
-            Input("node-search-cats", "value"),
+            Input("node-search-cats", "data"),
             Input('tab-switch-trigger', 'value'),  # Trigger on tab switch
             State('session-biolink-version-store', 'data'),  # READ version from store
             prevent_initial_call=True  # Prevent initial call for filtering
@@ -1046,24 +1122,73 @@ class BiolinkDashApp:
             return current_search + [node_id]
 
         @self.app.callback(
-            Output("node-search-cats", "value"),
+            Output("node-search-cats", "data"),
             Input("filter-to-node-cats", "n_clicks"),
             State("selected-cats", "data"),
-            State("node-search-cats", "value"),
+            State("node-search-cats", "data"),
             prevent_initial_call=True,
         )
         def filter_to_selected_category(n_clicks, selected_nodes, current_search):
             return add_selected_to_search(n_clicks, selected_nodes, current_search)
 
         @self.app.callback(
-            Output("node-search-preds", "value"),
+            Output("node-search-preds", "data"),
             Input("filter-to-node-preds", "n_clicks"),
             State("selected-preds", "data"),
-            State("node-search-preds", "value"),
+            State("node-search-preds", "data"),
             prevent_initial_call=True,
         )
         def filter_to_selected_predicate(n_clicks, selected_nodes, current_search):
             return add_selected_to_search(n_clicks, selected_nodes, current_search)
+
+        # Keep each custom multiselect in sync with its selection (the Store data): update
+        # the trigger text (empty -> the CSS :empty placeholder shows) and the checked state
+        # of the option rows. Driven off the Store so it reflects programmatic changes too
+        # (e.g. the "focus the graph on this item" button).
+        for search_id in ["node-search-cats", "node-search-preds", "domain-filter",
+                          "range-filter"]:
+            self.app.clientside_callback(
+                f"""
+                function(data) {{
+                    // data is a list (multi-select) or a single string (single-select)
+                    var arr = Array.isArray(data) ? data : (data ? [data] : []);
+                    var sel = {{}}; arr.forEach(function(v) {{ sel[v] = 1; }});
+                    var display = document.getElementById("{search_id}--display");
+                    if (display) {{
+                        var wrapper = display.closest(".bl-ms-wrapper");
+                        if (wrapper) {{
+                            wrapper.classList.toggle("bl-ms-has-value", arr.length > 0);
+                            wrapper.querySelectorAll(".bl-ms-option").forEach(function(row) {{
+                                row.classList.toggle("bl-ms-selected", !!sel[row.getAttribute("data-value")]);
+                            }});
+                        }}
+                    }}
+                    return arr.length ? arr.join(", ") : "";
+                }}
+                """,
+                Output(f"{search_id}--display", "children"),
+                Input(search_id, "data"),
+                prevent_initial_call=True,
+            )
+
+        # Show each tab's "Filtered view" banner when that tab has any active filter, so it's
+        # obvious you're looking at a subset (and can clear it in one click).
+        self.app.clientside_callback(
+            "function(s){ return (s && s.length) ? 'bl-filter-banner bl-filter-banner-visible'"
+            " : 'bl-filter-banner'; }",
+            Output("tree-cats--filterbanner", "className"),
+            Input("node-search-cats", "data"),
+            prevent_initial_call=True,
+        )
+        self.app.clientside_callback(
+            "function(s, d, r){ var any = (s && s.length) || (d && d.length) || (r && r.length);"
+            " return any ? 'bl-filter-banner bl-filter-banner-visible' : 'bl-filter-banner'; }",
+            Output("tree-preds--filterbanner", "className"),
+            Input("node-search-preds", "data"),
+            Input("domain-filter", "data"),
+            Input("range-filter", "data"),
+            prevent_initial_call=True,
+        )
 
         # Update the session store when version dropdown changes
         @self.app.callback(
