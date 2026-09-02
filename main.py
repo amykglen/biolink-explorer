@@ -222,10 +222,14 @@ class BiolinkDashApp:
                 if "preds" in tree_id:
                     pills.append(hidden_pill_div("noncanon", "include-noncanonical-preds"))
                 overlays = [filter_banner, html.Div(pills, className="bl-hidden-badges")]
+            # (class hooks below are for the mobile-only @media block in styles.css; they add
+            # no desktop styling, so the desktop layout is unchanged.)
             return html.Div(
+                className="tab-row",
                 style=tab_row_style,
                 children=[
                     html.Div(
+                        className="graph-col",
                         style=graph_col_style,
                         children=[
                             html.Div(id=filters_id),  # filters populated by callback
@@ -242,11 +246,13 @@ class BiolinkDashApp:
                     ),
                     # Detail panel: a resize handle + the (callback-updated) content
                     html.Div(
+                        className="detail-panel",
                         style=self.styles.detail_panel_style,
                         children=[
                             html.Div(className="panel-resize-handle",
                                      style=self.styles.panel_resize_handle_style),
-                            html.Div(id=info_id, style=self.styles.detail_content_style,
+                            html.Div(id=info_id, className="panel-content",
+                                     style=self.styles.detail_content_style,
                                      children=self.get_node_info(None)),
                         ],
                     ),

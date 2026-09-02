@@ -512,3 +512,49 @@ html, body {
     background: #efeee9 !important;
     color: #2a2825 !important;
 }
+
+/* ------------------------------------------------------------------ *
+ * Mobile / narrow screens ONLY. Everything above is unchanged; these
+ * rules apply solely at <= 768px, so the desktop layout is untouched.
+ * On phones the side-by-side graph + detail panel don't fit, so we
+ * stack them vertically (graph on top, panel below) and let the page
+ * scroll. !important is needed to override the components' inline styles.
+ * ------------------------------------------------------------------ */
+@media (max-width: 768px) {
+    /* Desktop locks the page to the viewport (body overflow hidden) and lets inner panels
+       scroll; on mobile we let the whole page scroll so the stacked panel is reachable. */
+    html, body {
+        height: auto !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
+    .tab-parent, .tab-content {
+        height: auto !important;
+        overflow: visible !important;
+    }
+    .tab-row {
+        flex-direction: column !important;
+        height: auto !important;
+    }
+    /* Give the graph a fixed slice of the viewport so it's actually visible. */
+    .graph-col {
+        height: 62vh !important;
+        flex: 0 0 auto !important;
+    }
+    /* Detail panel drops below the graph, full width, growing with its content. */
+    .detail-panel {
+        width: 100% !important;
+        height: auto !important;
+        border-left: none !important;
+        border-top: 1px solid #e6e3de !important;
+    }
+    .panel-content {
+        height: auto !important;
+        overflow: visible !important;
+        padding: 18px 18px 28px 18px !important;
+    }
+    /* The drag-to-resize handle is a desktop affordance; hide it on touch. */
+    .panel-resize-handle {
+        display: none !important;
+    }
+}
