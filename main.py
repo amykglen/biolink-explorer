@@ -33,10 +33,45 @@ class BiolinkDashApp:
 
         self.styles: Styles = Styles()
 
+        # Social/link-preview metadata (Open Graph + Twitter), injected into the served
+        # <head> so crawlers (LinkedIn, Slack, X, etc.) can build a rich preview. og:url and
+        # og:image want ABSOLUTE URLs on the deployed domain — set SITE_URL below to enable
+        # them (og:image drives the preview thumbnail; without it previews are sparse).
+        site_description = ("Interactively explore the Biolink Model — its category, predicate, "
+                            "association, and enum hierarchies — with search, filtering, and live "
+                            "switching between model versions.")
+        SITE_URL = "https://biolink-explorer-app-286f906f6294.herokuapp.com"  # no trailing slash
+        meta_tags = [
+            {"name": "viewport", "content": "width=device-width, initial-scale=1"},
+            {"name": "description", "content": site_description},
+            {"property": "og:title", "content": "Biolink Model Explorer"},
+            {"property": "og:description", "content": site_description},
+            {"property": "og:type", "content": "website"},
+            {"property": "og:site_name", "content": "Biolink Model Explorer"},
+            {"name": "twitter:title", "content": "Biolink Model Explorer"},
+            {"name": "twitter:description", "content": site_description},
+        ]
+        if SITE_URL:
+            og_image = f"{SITE_URL}/assets/og-image.png"
+            og_image_alt = "The Biolink Model Explorer app showing the predicate hierarchy."
+            meta_tags += [
+                {"property": "og:url", "content": SITE_URL},
+                {"property": "og:image", "content": og_image},
+                {"property": "og:image:width", "content": "1200"},
+                {"property": "og:image:height", "content": "630"},
+                {"property": "og:image:alt", "content": og_image_alt},
+                {"name": "twitter:card", "content": "summary_large_image"},
+                {"name": "twitter:image", "content": og_image},
+                {"name": "twitter:image:alt", "content": og_image_alt},
+            ]
+        else:
+            meta_tags.append({"name": "twitter:card", "content": "summary"})
+
         self.app: Dash = Dash(
             __name__,
             title="Biolink Explorer",
             suppress_callback_exceptions=True,
+            meta_tags=meta_tags,
             external_stylesheets=[
                 "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
             ],
