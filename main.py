@@ -1315,11 +1315,9 @@ class BiolinkDashApp:
             # with the initial dropdown value
         )
         def update_session_version(version_tag):
-            # if not version_tag:
-            #     return dash.no_update # Should not happen with clearable=False
-            # Ensure data is loaded into cache (won't reload if already present)
-            self.get_biolink_data_for_version(version_tag)
-            # Store the selected version tag in the user's session
+            # Just record the chosen version (fast). The actual (potentially slow) schema
+            # load is deferred to update_ui_for_version below — whose outputs live inside the
+            # dcc.Loading wrapper, so the "thinking" spinner shows while a new version loads.
             return version_tag
 
         # Update graphs, filter options, and links when session version changes

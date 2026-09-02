@@ -194,12 +194,19 @@ class BiolinkManager:
             self.add_node_if_doesnt_exist(category_dag, class_name)
             self.record_common_metadata(category_dag.nodes[class_name], element)
 
-        # Last, filter out things that are not categories ('classes' includes other things too..)
-        non_category_node_ids = [node_id for node_id, data in category_dag.nodes(data=True)
-                                 if not (self.root_category in self.get_ancestors(category_dag, node_id)
-                                         or data.get("is_mixin"))]
-        for non_category_node_id in non_category_node_ids:
-            category_dag.remove_node(non_category_node_id)
+        # Keep the NamedThing subtree, plus mixins that actually feed into it (a mixin is a
+        # category mixin only if some category inherits from it). This excludes association /
+        # qualifier / quantifier mixins, which are 'classes' too but belong to the association
+        # side of the model, not the category hierarchy.
+        cat_core = (self.get_descendants(category_dag, self.root_category)
+                    if category_dag.has_node(self.root_category) else set())
+        keep = set(cat_core)
+        for node_id, data in category_dag.nodes(data=True):
+            if (data.get("is_mixin") and node_id not in cat_core
+                    and self.get_descendants(category_dag, node_id) & cat_core):
+                keep.add(node_id)
+        for node_id in [n for n in category_dag.nodes() if n not in keep]:
+            category_dag.remove_node(node_id)
 
         return category_dag
 
@@ -267,6 +274,12 @@ class BiolinkManager:
         dag = nx.DiGraph()
         tk = self.toolkit
         english_name = {}  # camelCase id -> the schema's English name (for induced-slot lookups)
+        # Association-*structure* mixins constrain subject/object/predicate (they're partial
+        # association patterns, e.g. CaseToEntityAssociationMixin). We track these so we can
+        # exclude "utility" mixins that only donate qualifier/quantifier slots (e.g.
+        # FrequencyQualifierMixin) — those are inherited by associations but aren't themselves
+        # association types, so they'd just be noise in this hierarchy.
+        structure_mixins = set()
 
         for class_name_english in tk.get_all_classes(formatted=False):
             element = tk.get_element(class_name_english)
@@ -280,16 +293,20 @@ class BiolinkManager:
                 dag.add_edge(sentencecase_to_camelcase(mixin_english), class_name)
             self.add_node_if_doesnt_exist(dag, class_name)
             self.record_common_metadata(dag.nodes[class_name], element)
+            if element.mixin and any(slot in (element.slot_usage or {})
+                                     for slot in ("subject", "object", "predicate")):
+                structure_mixins.add(class_name)
 
-        # Keep the 'association' subtree, plus mixins that parent one of those associations
-        # (so 'Show mixins?' reveals the relevant multiple-inheritance, without dragging in
-        # unrelated category mixins).
+        # Keep the 'association' subtree, plus the association-structure mixins that parent one
+        # of those associations (so 'Show mixins?' reveals the relevant multiple-inheritance,
+        # without unrelated category mixins or slot-donor utility mixins).
         if not dag.has_node(self.root_association):
             return nx.DiGraph()  # no associations in this (older) version
         assoc_core = self.get_descendants(dag, self.root_association)
         keep = set(assoc_core)
         for node_id, data in dag.nodes(data=True):
-            if data.get("is_mixin") and any(child in assoc_core for child in dag.successors(node_id)):
+            if (data.get("is_mixin") and node_id in structure_mixins
+                    and any(child in assoc_core for child in dag.successors(node_id))):
                 keep.add(node_id)
         for node_id in [n for n in dag.nodes() if n not in keep]:
             dag.remove_node(node_id)
